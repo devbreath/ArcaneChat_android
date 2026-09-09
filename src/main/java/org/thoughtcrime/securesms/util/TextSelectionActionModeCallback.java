@@ -49,16 +49,18 @@ public class TextSelectionActionModeCallback implements ActionMode.Callback {
   public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
     int id = item.getItemId();
     if (id == R.id.menu_context_copy) {
-      CharSequence selected = textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
+      CharSequence selected =
+          textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
       Util.writeTextToClipboard(context, selected.toString());
       Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
       mode.finish();
       return true;
     } else if (id == R.id.menu_context_select_all) {
-      textView.selectAll();
+      textView.setSelection(0, textView.length());
       return true;
     } else if (id == R.id.menu_context_share_text) {
-      CharSequence selected = textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
+      CharSequence selected =
+          textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
       shareText(selected.toString());
       mode.finish();
       return true;
