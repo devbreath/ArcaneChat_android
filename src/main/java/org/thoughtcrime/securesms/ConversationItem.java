@@ -462,6 +462,18 @@ public class ConversationItem extends BaseConversationItem {
       bodyText.setText(spannable);
       bodyText.setVisibility(View.VISIBLE);
 
+      // Enable text selection if the feature is enabled
+      boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
+      bodyText.setTextIsSelectable(textSelectionEnabled);
+      if (textSelectionEnabled) {
+        bodyText.setCustomSelectionActionModeCallback(
+            new TextSelectionActionModeCallback(context, bodyText));
+        bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
+      } else {
+        bodyText.setCustomSelectionActionModeCallback(null);
+        bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
+      }
+
       // Register a TalkBack "Actions" entry for each link in the message
       Spanned spanned = (Spanned) spannable;
       final TextView tv = bodyText;
