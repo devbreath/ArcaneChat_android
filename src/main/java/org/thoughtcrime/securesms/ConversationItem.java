@@ -468,10 +468,13 @@ public class ConversationItem extends BaseConversationItem {
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
-        // Do NOT set LongClickMovementMethod here - it intercepts long-press
-        // and prevents Android's native text selection from activating.
+        // Remove long-click listener so that View.performLongClick() returns false,
+        // allowing Android's native text selection to activate on long-press.
+        bodyText.setOnLongClickListener(null);
+        bodyText.setLongClickable(true);
       } else {
         bodyText.setCustomSelectionActionModeCallback(null);
+        bodyText.setOnLongClickListener(passthroughClickListener);
         bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
       }
 
