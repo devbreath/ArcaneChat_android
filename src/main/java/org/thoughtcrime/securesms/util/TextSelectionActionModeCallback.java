@@ -10,21 +10,18 @@ package org.thoughtcrime.securesms.util;
 
 import android.content.Context;
 import android.content.Intent;
-import android.text.Selection;
-import android.text.Spannable;
 import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.TextView;
-import android.widget.Toast;
 import androidx.annotation.NonNull;
 import org.thoughtcrime.securesms.R;
 
 /**
  * Custom ActionMode callback shown when the user selects part of a message's text.
  *
- * <p>It exposes "Copy", "Select all" and "Share" actions for the currently selected text, and shows
- * a confirmation toast when text is copied to the clipboard.
+ * <p>It adds a "Share" action to the native text selection toolbar. The native Android toolbar
+ * already provides "Copy" and "Select all" actions.
  */
 public class TextSelectionActionModeCallback implements ActionMode.Callback {
 
@@ -50,20 +47,7 @@ public class TextSelectionActionModeCallback implements ActionMode.Callback {
   @Override
   public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
     int id = item.getItemId();
-    if (id == R.id.menu_context_copy) {
-      CharSequence selected =
-          textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
-      Util.writeTextToClipboard(context, selected.toString());
-      Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
-      mode.finish();
-      return true;
-    } else if (id == R.id.menu_context_select_all) {
-      CharSequence text = textView.getText();
-      if (text instanceof Spannable) {
-        Selection.selectAll((Spannable) text);
-      }
-      return true;
-    } else if (id == R.id.menu_context_share_text) {
+    if (id == R.id.menu_context_share_text) {
       CharSequence selected =
           textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
       shareText(selected.toString());

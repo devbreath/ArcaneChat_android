@@ -468,14 +468,10 @@ public class ConversationItem extends BaseConversationItem {
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
-        // Remove long-click listener so that View.performLongClick() returns false,
-        // allowing Android's native text selection to activate on long-press.
         bodyText.setOnLongClickListener(null);
-        bodyText.setLongClickable(true);
       } else {
         bodyText.setCustomSelectionActionModeCallback(null);
         bodyText.setOnLongClickListener(passthroughClickListener);
-        bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
       }
 
       // Register a TalkBack "Actions" entry for each link in the message
