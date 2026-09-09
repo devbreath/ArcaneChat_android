@@ -21,8 +21,8 @@ import org.thoughtcrime.securesms.R;
 /**
  * Custom ActionMode callback shown when the user selects part of a message's text.
  *
- * <p>It exposes "Copy", "Select all" and "Share" actions for the currently selected text,
- * and shows a confirmation toast when text is copied to the clipboard.
+ * <p>It exposes "Copy", "Select all" and "Share" actions for the currently selected text, and shows
+ * a confirmation toast when text is copied to the clipboard.
  */
 public class TextSelectionActionModeCallback implements ActionMode.Callback {
 
@@ -49,22 +49,16 @@ public class TextSelectionActionModeCallback implements ActionMode.Callback {
   public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
     int id = item.getItemId();
     if (id == R.id.menu_context_copy) {
-      CharSequence selected = textView.getText().subSequence(
-          textView.getSelectionStart(), textView.getSelectionEnd());
+      CharSequence selected = textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
       Util.writeTextToClipboard(context, selected.toString());
-      Toast.makeText(
-              context,
-              R.string.copied_to_clipboard,
-              Toast.LENGTH_SHORT)
-          .show();
+      Toast.makeText(context, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
       mode.finish();
       return true;
     } else if (id == R.id.menu_context_select_all) {
       textView.selectAll();
       return true;
     } else if (id == R.id.menu_context_share_text) {
-      CharSequence selected = textView.getText().subSequence(
-          textView.getSelectionStart(), textView.getSelectionEnd());
+      CharSequence selected = textView.getText().subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
       shareText(selected.toString());
       mode.finish();
       return true;
@@ -79,6 +73,6 @@ public class TextSelectionActionModeCallback implements ActionMode.Callback {
     Intent sendIntent = new Intent(Intent.ACTION_SEND);
     sendIntent.setType("text/plain");
     sendIntent.putExtra(Intent.EXTRA_TEXT, text);
-    context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.share_via)));
+    context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.menu_share)));
   }
 }
