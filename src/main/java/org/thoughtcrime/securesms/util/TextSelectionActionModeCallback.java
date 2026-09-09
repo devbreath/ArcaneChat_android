@@ -10,6 +10,8 @@ package org.thoughtcrime.securesms.util;
 
 import android.content.Context;
 import android.content.Intent;
+import android.text.Selection;
+import android.text.Spannable;
 import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -56,7 +58,10 @@ public class TextSelectionActionModeCallback implements ActionMode.Callback {
       mode.finish();
       return true;
     } else if (id == R.id.menu_context_select_all) {
-      textView.setSelection(0, textView.length());
+      CharSequence text = textView.getText();
+      if (text instanceof Spannable) {
+        Selection.selectAll((Spannable) text);
+      }
       return true;
     } else if (id == R.id.menu_context_share_text) {
       CharSequence selected =
