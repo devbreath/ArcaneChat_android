@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.Set;
 import org.thoughtcrime.securesms.connect.DcHelper;
 import org.thoughtcrime.securesms.recipients.Recipient;
+import org.thoughtcrime.securesms.util.Prefs;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.ViewUtil;
 
@@ -101,6 +102,9 @@ public abstract class BaseConversationItem extends LinearLayout
     @Override
     public boolean onLongClick(View v) {
       if (bodyText.hasSelection()) {
+        return false;
+      }
+      if (Prefs.isTextSelectionEnabled(context)) {
         return false;
       }
       performLongClick();

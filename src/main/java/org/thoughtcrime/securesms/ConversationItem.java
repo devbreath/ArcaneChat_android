@@ -26,6 +26,7 @@ import android.os.Build;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.method.ArrowKeyMovementMethod;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
@@ -75,11 +76,14 @@ import org.thoughtcrime.securesms.mms.VcardSlide;
 import org.thoughtcrime.securesms.reactions.ReactionsConversationView;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.updater.AppUpdate;
+import org.thoughtcrime.securesms.util.LinkTapTouchListener;
 import org.thoughtcrime.securesms.util.Linkifier;
 import org.thoughtcrime.securesms.util.LongClickCopySpan;
 import org.thoughtcrime.securesms.util.LongClickMovementMethod;
 import org.thoughtcrime.securesms.util.MarkdownUtil;
 import org.thoughtcrime.securesms.util.MediaUtil;
+import org.thoughtcrime.securesms.util.Prefs;
+import org.thoughtcrime.securesms.util.TextSelectionActionModeCallback;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.views.Stub;
@@ -115,6 +119,8 @@ public class ConversationItem extends BaseConversationItem {
   private ViewGroup container;
   private Button msgActionButton;
   private Button showFullButton;
+
+  private LinkTapTouchListener linkTapTouchListener;
 
   private @NonNull Stub<ConversationItemThumbnail> mediaThumbnailStub;
   private @NonNull Stub<AudioView> audioViewStub;
@@ -173,6 +179,7 @@ public class ConversationItem extends BaseConversationItem {
 
     setOnClickListener(new ClickListener(null));
 
+    this.linkTapTouchListener = new LinkTapTouchListener(bodyText);
     bodyText.setOnLongClickListener(passthroughClickListener);
     bodyText.setOnClickListener(passthroughClickListener);
 
@@ -459,6 +466,23 @@ public class ConversationItem extends BaseConversationItem {
               batchSelected.isEmpty());
       bodyText.setText(spannable);
       bodyText.setVisibility(View.VISIBLE);
+
+      // Enable text selection if the feature is enabled
+      boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
+      bodyText.setTextIsSelectable(textSelectionEnabled);
+      if (textSelectionEnabled) {
+        // Use the built-in ArrowKeyMovementMethod so that TextView handles text
+        // selection natively. Link taps are handled by linkTapTouchListener, which
+        // returns false from onTouch and therefore does not interfere with selection.
+        bodyText.setMovementMethod(ArrowKeyMovementMethod.getInstance());
+        bodyText.setOnTouchListener(linkTapTouchListener);
+        bodyText.setCustomSelectionActionModeCallback(
+            new TextSelectionActionModeCallback(context, bodyText));
+      } else {
+        bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
+        bodyText.setOnTouchListener(null);
+        bodyText.setCustomSelectionActionModeCallback(null);
+      }
 
       // Register a TalkBack "Actions" entry for each link in the message
       Spanned spanned = (Spanned) spannable;
