@@ -177,15 +177,7 @@ public class ConversationItem extends BaseConversationItem {
 
     bodyText.setOnLongClickListener(passthroughClickListener);
     bodyText.setOnClickListener(passthroughClickListener);
-    bodyText.setOnTouchListener((v, event) -> {
-      // After touch events (e.g., link clicks), TextView may reset text selection.
-      // Restore the selection state.
-      if (Prefs.isTextSelectionEnabled(context)) {
-        bodyText.setTextIsSelectable(true);
-        bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
-      }
-      return false;
-    });
+
     bodyText.setMovementMethod(LongClickMovementMethod.getInstance(getContext()));
   }
 
@@ -473,9 +465,9 @@ public class ConversationItem extends BaseConversationItem {
       // Enable text selection if the feature is enabled
       boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
       bodyText.setTextIsSelectable(textSelectionEnabled);
-      // Restore LongClickMovementMethod after setTextIsSelectable() may replace it.
-      // This is called on every bind, but it's safe to re-assert the movement method.
-      bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
+      // LongClickMovementMethod is set once in onFinishInflate().
+      // It is preserved across rebinds by not overriding it here.
+      // Its onTouchEvent() checks Prefs.isTextSelectionEnabled() to preserve user selection.
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
