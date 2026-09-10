@@ -465,6 +465,10 @@ public class ConversationItem extends BaseConversationItem {
       // Enable text selection if the feature is enabled
       boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
       bodyText.setTextIsSelectable(textSelectionEnabled);
+      // Always set LongClickMovementMethod so links remain clickable.
+      // setTextIsSelectable(true) may replace it with ArrowKeyMovementMethod,
+      // so we restore it here unconditionally.
+      bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
