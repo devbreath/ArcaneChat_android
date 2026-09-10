@@ -26,6 +26,7 @@ import android.os.Build;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
@@ -465,9 +466,12 @@ public class ConversationItem extends BaseConversationItem {
       // Enable text selection if the feature is enabled
       boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
       bodyText.setTextIsSelectable(textSelectionEnabled);
-      // LongClickMovementMethod is set once in onFinishInflate().
-      // It is preserved across rebinds by not overriding it here.
-      // Its onTouchEvent() checks Prefs.isTextSelectionEnabled() to preserve user selection.
+      // When text selection is enabled, use LinkMovementMethod which doesn't
+      // call Selection.removeSelection() during touch events. This preserves
+      // user's text selection across link clicks.
+      bodyText.setMovementMethod(textSelectionEnabled
+          ? LinkMovementMethod.getInstance()
+          : LongClickMovementMethod.getInstance(context));
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
