@@ -468,10 +468,8 @@ public class ConversationItem extends BaseConversationItem {
       if (textSelectionEnabled) {
         bodyText.setCustomSelectionActionModeCallback(
             new TextSelectionActionModeCallback(context, bodyText));
-        bodyText.setOnLongClickListener(null);
       } else {
         bodyText.setCustomSelectionActionModeCallback(null);
-        bodyText.setOnLongClickListener(passthroughClickListener);
       }
 
       // Register a TalkBack "Actions" entry for each link in the message
