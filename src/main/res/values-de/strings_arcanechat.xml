@@ -2,8 +2,6 @@
 <resources
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingTranslation">
-    <string name="or_separator">oder</string>
-    <string name="online">online</string>
     <string name="pink">Rosa</string>
     <string name="gray">Grau</string>
     <string name="terms_n_privacy_policy">Nutzungsbedingungen und Datenschutzerklärung</string>

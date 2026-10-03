@@ -2,8 +2,6 @@
 <resources
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingTranslation">
-    <string name="or_separator">o</string>
-    <string name="online">en línea</string>
     <string name="pink">Rosa</string>
     <string name="gray">Gris</string>
     <string name="terms_n_privacy_policy">Términos y política de privacidad</string>

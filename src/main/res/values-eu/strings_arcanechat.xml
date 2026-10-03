@@ -3,9 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingTranslation">
     <string name="menu_export_image">Esportatu irudia</string>
-    <!-- the word "or" to separate blocks in the user interface that are mutually exclusive -->
-    <string name="or_separator">edo</string>
-    <string name="online">online</string>
     <string name="pink">Arrosa</string>
     <string name="gray">Grisa</string>
 
