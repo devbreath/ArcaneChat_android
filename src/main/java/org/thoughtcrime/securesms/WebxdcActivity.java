@@ -62,6 +62,7 @@ import org.thoughtcrime.securesms.util.JsonUtils;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.Prefs;
 import org.thoughtcrime.securesms.util.Util;
+import org.thoughtcrime.securesms.youtube.YoutubeManager;
 
 public class WebxdcActivity extends WebViewActivity implements DcEventCenter.DcEventDelegate {
   private static final String TAG = "WebxdcActivity";
@@ -349,6 +350,7 @@ public class WebxdcActivity extends WebViewActivity implements DcEventCenter.DcE
   @Override
   protected void onDestroy() {
     DcHelper.getEventCenter(this.getApplicationContext()).removeObservers(this);
+    YoutubeManager.shutdown(accountId, dcAppMsg.getId());
     leaveRealtimeChannel();
     tts.shutdown();
     super.onDestroy();
@@ -453,7 +455,9 @@ public class WebxdcActivity extends WebViewActivity implements DcEventCenter.DcE
         throw new Exception("no url specified");
       }
       String path = Uri.parse(rawUrl).getPath();
-      if (path.equalsIgnoreCase("/webxdc.js")) {
+      if (YoutubeManager.isVideoRangeRequest(rawUrl)) {
+        return YoutubeManager.serveVideoRange(accountId, dcAppMsg.getId(), rawUrl, dcContext, rpc);
+      } else if (path.equalsIgnoreCase("/webxdc.js")) {
         InputStream targetStream = getResources().openRawResource(R.raw.webxdc);
         res = new WebResourceResponse("text/javascript", "UTF-8", targetStream);
       } else if (path.equalsIgnoreCase("/webxdc_bootstrap324567869.html")) {
@@ -534,8 +538,13 @@ public class WebxdcActivity extends WebViewActivity implements DcEventCenter.DcE
     } else if ((eventId == DcContext.DC_EVENT_WEBXDC_REALTIME_DATA
         && event.getData1Int() == dcAppMsg.getId())) {
       Log.i(TAG, "handling realtime data event");
+      byte[] realtimeData = event.getData2Blob();
+      if (YoutubeManager.handleRealtime(
+          accountId, dcAppMsg.getId(), realtimeData, dcContext, rpc)) {
+        return; // consumed by the youtube P2P server (initiator side)
+      }
       StringBuilder data = new StringBuilder();
-      for (byte b : event.getData2Blob()) {
+      for (byte b : realtimeData) {
         data.append(((int) b) + ",");
       }
       callJavaScriptFunction("__webxdcRealtimeData([" + data + "])");
@@ -879,6 +888,37 @@ public class WebxdcActivity extends WebViewActivity implements DcEventCenter.DcE
       } catch (IOException | RpcException e) {
         e.printStackTrace();
       }
+    }
+
+    /**
+     * @noinspection unused
+     */
+    @JavascriptInterface
+    public String ytFetchUrl(String videoId) {
+      return YoutubeManager.ytFetchUrl(
+          accountId,
+          WebxdcActivity.this.dcAppMsg.getId(),
+          videoId,
+          WebxdcActivity.this.dcContext,
+          WebxdcActivity.this.rpc);
+    }
+
+    /**
+     * @noinspection unused
+     */
+    @JavascriptInterface
+    public String readVideoChunk(String videoId, long start, int len) {
+      return YoutubeManager.readVideoChunk(
+          accountId, WebxdcActivity.this.dcAppMsg.getId(), videoId, start, len);
+    }
+
+    /**
+     * @noinspection unused
+     */
+    @JavascriptInterface
+    public void writeVideoChunk(String videoId, long start, String b64) {
+      YoutubeManager.writeVideoChunk(
+          accountId, WebxdcActivity.this.dcAppMsg.getId(), videoId, start, b64);
     }
 
     @JavascriptInterface
