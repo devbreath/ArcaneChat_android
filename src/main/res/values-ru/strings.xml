@@ -103,6 +103,14 @@
     <string name="error_x">Ошибка: %1$s</string>
     <string name="no_app_to_handle_data">Не удалось найти приложение для обработки этого типа данных.</string>
     <string name="no_browser_installed">Браузер не установлен.</string>
+
+    <!-- YouTube sharing -->
+    <string name="yt_watch_in_arcanechat">Смотреть в ArcaneChat</string>
+    <string name="yt_watch_in_chat">Смотреть в ArcaneChat</string>
+    <string name="yt_share_to_chat">Поделиться в чат</string>
+    <string name="yt_pick_chat">Выберите чат</string>
+    <string name="yt_dialog_title">YouTube-видео</string>
+    <string name="yt_player_name">YouTube-плеер</string>
     <string name="file_not_found">Не удалось найти %1$s.</string>
     <!-- the placeholder will be replaced by the name of a file -->
     <string name="cannot_save_file">Невозможно сохранить %1$s.</string>

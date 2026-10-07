@@ -103,6 +103,14 @@
     <string name="error_x">Error: %1$s</string>
     <string name="no_app_to_handle_data">Can\'t find an app to handle this type of data.</string>
     <string name="no_browser_installed">No browser installed.</string>
+
+    <!-- YouTube sharing -->
+    <string name="yt_watch_in_arcanechat">Watch in ArcaneChat</string>
+    <string name="yt_watch_in_chat">Watch in ArcaneChat</string>
+    <string name="yt_share_to_chat">Share to chat</string>
+    <string name="yt_pick_chat">Pick a chat</string>
+    <string name="yt_dialog_title">YouTube video</string>
+    <string name="yt_player_name">YouTube Player</string>
     <string name="file_not_found">Could not find %1$s.</string>
     <!-- the placeholder will be replaced by the name of a file -->
     <string name="cannot_save_file">Cannot save %1$s.</string>
