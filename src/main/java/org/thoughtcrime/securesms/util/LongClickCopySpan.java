@@ -16,6 +16,7 @@ import org.thoughtcrime.securesms.ConversationActivity;
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.connect.DcHelper;
 import org.thoughtcrime.securesms.qr.QrCodeHandler;
+import org.thoughtcrime.securesms.youtube.YoutubeLinks;
 
 public class LongClickCopySpan extends ClickableSpan {
   private static final String PREFIX_MAILTO = "mailto:";
@@ -90,7 +91,12 @@ public class LongClickCopySpan extends ClickableSpan {
     } else {
       Activity activity = (Activity) widget.getContext();
       if (!new QrCodeHandler(activity).handleProxyQr(url)) {
-        IntentUtils.showInBrowser(activity, url);
+        String ytUrl = YoutubeLinks.findVideoUrl(url);
+        if (ytUrl != null) {
+          YoutubeLinks.handleYouTubeUrl(activity, ytUrl);
+        } else {
+          IntentUtils.showInBrowser(activity, url);
+        }
       }
     }
   }

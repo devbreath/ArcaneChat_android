@@ -39,6 +39,7 @@ import org.thoughtcrime.securesms.util.DynamicNoActionBarTheme;
 import org.thoughtcrime.securesms.util.MailtoUtil;
 import org.thoughtcrime.securesms.util.MediaUtil;
 import org.thoughtcrime.securesms.util.ShareUtil;
+import org.thoughtcrime.securesms.youtube.YoutubeLinks;
 
 /**
  * An activity to quickly share content with chats
@@ -99,6 +100,10 @@ public class ShareActivity extends PassphraseRequiredActionBarActivity
   private void initializeMedia() {
     resolvedExtras = new ArrayList<>();
 
+    if (offerYouTubePlayer(getIntent())) {
+      return;
+    }
+
     List<Uri> streamExtras = new ArrayList<>();
     if (MailtoUtil.isMailto(getIntent().getData())) {
       String[] extraEmail = getIntent().getStringArrayExtra(Intent.EXTRA_EMAIL);
@@ -130,6 +135,24 @@ public class ShareActivity extends PassphraseRequiredActionBarActivity
     } else {
       resolveUris(streamExtras);
     }
+  }
+
+  /** Detects youtube links in shared text and offers the in-app player instead of a text share. */
+  private boolean offerYouTubePlayer(Intent intent) {
+    if (!Intent.ACTION_SEND.equals(intent.getAction())) {
+      return false;
+    }
+    CharSequence cs = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+    String text = cs != null ? cs.toString() : getIntent().getStringExtra(Intent.EXTRA_TEXT);
+    if (text == null) {
+      return false;
+    }
+    final String url = YoutubeLinks.findVideoUrl(text);
+    if (url == null) {
+      return false;
+    }
+    YoutubeLinks.handleYouTubeUrl(this, url);
+    return true;
   }
 
   private boolean needsFilePermission(List<Uri> uris) {

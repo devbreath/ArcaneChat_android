@@ -102,4 +102,38 @@ public class YoutubeProtocolTest {
     assertThat(YoutubeProtocol.FRAMES_PER_CHUNK * YoutubeProtocol.FRAME_SIZE)
         .isEqualTo(YoutubeProtocol.CHUNK_SIZE);
   }
+
+  @Test
+  public void findVideoUrl_extractsFromSharedText() {
+    assertThat(YoutubeProtocol.findVideoUrl("Look: https://youtu.be/dQw4w9WgXcQ?si=x cool"))
+        .isEqualTo("https://youtu.be/dQw4w9WgXcQ?si=x");
+    assertThat(
+            YoutubeProtocol.findVideoUrl(
+                "Check this out - https://www.youtube.com/watch?v=dQw4w9WgXcQ&pp=ygUB"))
+        .isEqualTo("https://www.youtube.com/watch?v=dQw4w9WgXcQ&pp=ygUB");
+    assertThat(YoutubeProtocol.findVideoUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ"))
+        .isEqualTo("https://www.youtube.com/shorts/dQw4w9WgXcQ");
+  }
+
+  @Test
+  public void findVideoUrl_rejectsNonVideoText() {
+    assertThat(YoutubeProtocol.findVideoUrl(null)).isNull();
+    assertThat(YoutubeProtocol.findVideoUrl("no links here")).isNull();
+    assertThat(YoutubeProtocol.findVideoUrl("https://example.com/watch?v=dQw4w9WgXcQ")).isNull();
+    assertThat(YoutubeProtocol.findVideoUrl("https://www.youtube.com/")).isNull();
+    assertThat(YoutubeProtocol.findVideoUrl("ftp://youtu.be/dQw4w9WgXcQ")).isNull();
+  }
+
+  @Test
+  public void isVideoUrl_acceptsKnownShapes() {
+    assertThat(YoutubeProtocol.isVideoUrl("https://youtu.be/dQw4w9WgXcQ")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("http://youtu.be/dQw4w9WgXcQ?t=30")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("https://youtube.com/watch?v=dQw4w9WgXcQ")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("https://m.youtube.com/watch?v=dQw4w9WgXcQ")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("https://www.youtube.com/embed/dQw4w9WgXcQ")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("https://www.youtube.com/live/dQw4w9WgXcQ")).isTrue();
+    assertThat(YoutubeProtocol.isVideoUrl("https://youtu.be/short")).isFalse();
+    assertThat(YoutubeProtocol.isVideoUrl("https://youtube.com/playlist?list=abc")).isFalse();
+    assertThat(YoutubeProtocol.isVideoUrl("not a url")).isFalse();
+  }
 }
