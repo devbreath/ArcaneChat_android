@@ -46,59 +46,6 @@ public final class YoutubeProtocol {
 
   private YoutubeProtocol() {}
 
-  /**
-   * Finds the first youtube video URL anywhere in the given free-form text (share sheets typically
-   * prepend a title). Returns the URL or null; the URL is only returned if a video id can be parsed
-   * from it.
-   */
-  public static @Nullable String findVideoUrl(String text) {
-    if (text == null) {
-      return null;
-    }
-    java.util.regex.Matcher m =
-        java.util.regex.Pattern.compile(
-                "https?://(?:www\\.|m\\.)?(?:youtube\\.com|youtu\\.be)/\\S+")
-            .matcher(text);
-    while (m.find()) {
-      String url = m.group();
-      if (isVideoUrl(url)) {
-        return url;
-      }
-    }
-    return null;
-  }
-
-  /** True if the url points at a youtube watch/shorts/youtu.be video page. */
-  public static boolean isVideoUrl(String url) {
-    if (url == null) {
-      return false;
-    }
-    String lower = url.toLowerCase(java.util.Locale.US);
-    if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
-      return false;
-    }
-    int schemeEnd = lower.indexOf("://") + 3;
-    int slash = lower.indexOf('/', schemeEnd);
-    String hostPart = slash < 0 ? lower.substring(schemeEnd) : lower.substring(schemeEnd, slash);
-    String pathPart = slash < 0 ? "" : url.substring(slash);
-    boolean hostOk =
-        hostPart.equals("youtu.be")
-            || hostPart.endsWith(".youtu.be")
-            || hostPart.equals("youtube.com")
-            || hostPart.endsWith(".youtube.com");
-    if (!hostOk) {
-      return false;
-    }
-    if (hostPart.endsWith("youtu.be")) {
-      return pathPart.length() > 1 && isValidVideoId(pathPart.substring(1).split("[/?&#]")[0]);
-    }
-    return pathPart.contains("/watch")
-        || pathPart.startsWith("/shorts/")
-        || pathPart.startsWith("/embed/")
-        || pathPart.startsWith("/live/")
-        || pathPart.startsWith("/v/");
-  }
-
   public static boolean isValidVideoId(String videoId) {
     if (videoId == null || videoId.length() != 11) {
       return false;
