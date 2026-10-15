@@ -442,8 +442,8 @@ public class ConversationItem extends BaseConversationItem {
   }
 
   private void setBodyText(DcMsg messageRecord) {
-    bodyText.setClickable(false);
-    bodyText.setFocusable(false);
+    // NOTE: clickable/focusable flags are set explicitly in both branches below, AFTER
+    // setTextIsSelectable() (which itself toggles those flags). Do not set them here.
 
     // Remove any link actions registered for the previous message binding
     for (int id : linkActionIds) {
@@ -467,13 +467,17 @@ public class ConversationItem extends BaseConversationItem {
       bodyText.setText(spannable);
       bodyText.setVisibility(View.VISIBLE);
 
-      // Enable text selection if the feature is enabled
+      // Enable text selection if the feature is enabled.
+      // NOTE: setTextIsSelectable() itself toggles focusable/clickable/long-clickable
+      // (AOSP TextView.setTextIsSelectable), so the flags below are set AFTER it.
       boolean textSelectionEnabled = Prefs.isTextSelectionEnabled(context);
       bodyText.setTextIsSelectable(textSelectionEnabled);
       if (textSelectionEnabled) {
         // Use the built-in ArrowKeyMovementMethod so that TextView handles text
         // selection natively. Link taps are handled by linkTapTouchListener, which
         // returns false from onTouch and therefore does not interfere with selection.
+        // Keep the selectable flags (focusable/clickable/long-clickable) so selection
+        // handles and the floating toolbar work.
         bodyText.setMovementMethod(ArrowKeyMovementMethod.getInstance());
         bodyText.setOnTouchListener(linkTapTouchListener);
         bodyText.setCustomSelectionActionModeCallback(
@@ -482,6 +486,11 @@ public class ConversationItem extends BaseConversationItem {
         bodyText.setMovementMethod(LongClickMovementMethod.getInstance(context));
         bodyText.setOnTouchListener(null);
         bodyText.setCustomSelectionActionModeCallback(null);
+        // Restore the legacy non-selectable state: not clickable/focusable, so taps and
+        // long-presses fall through to the bubble's passthrough listeners (multi-select).
+        bodyText.setClickable(false);
+        bodyText.setFocusable(false);
+        bodyText.setLongClickable(true);
       }
 
       // Register a TalkBack "Actions" entry for each link in the message

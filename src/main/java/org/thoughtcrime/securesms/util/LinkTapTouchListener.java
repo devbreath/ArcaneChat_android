@@ -40,7 +40,10 @@ public class LinkTapTouchListener implements View.OnTouchListener {
         downY = event.getY();
         downTime = event.getDownTime();
         longPressFired = false;
-        pressedSpan = findSpan(event.getX(), event.getY());
+        // When text is already selected, taps adjust or dismiss the selection via the
+        // TextView itself; don't highlight or open links so the active selection and its
+        // toolbar are not clobbered and no second menu appears over them.
+        pressedSpan = textView.hasSelection() ? null : findSpan(event.getX(), event.getY());
         if (pressedSpan != null) {
           pressedSpan.setHighlighted(
               true, ContextCompat.getColor(textView.getContext(), R.color.touch_highlight));
@@ -57,7 +60,14 @@ public class LinkTapTouchListener implements View.OnTouchListener {
         }
         break;
       case MotionEvent.ACTION_UP:
-        if (!longPressFired && pressedSpan != null) {
+        // longPressFired is only set on ACTION_MOVE, so a hold without any movement would
+        // otherwise still count as a tap. Compare the held duration against the system
+        // long-press timeout here as well.
+        boolean heldLong =
+            longPressFired
+                || (event.getEventTime() - downTime >= ViewConfiguration.getLongPressTimeout());
+        longPressFired = false;
+        if (!heldLong && pressedSpan != null && !textView.hasSelection()) {
           LongClickCopySpan toClick = findSpan(event.getX(), event.getY());
           LongClickCopySpan span = pressedSpan;
           clearHighlight();
@@ -69,6 +79,7 @@ public class LinkTapTouchListener implements View.OnTouchListener {
         }
         break;
       case MotionEvent.ACTION_CANCEL:
+        longPressFired = false;
         clearHighlight();
         break;
     }

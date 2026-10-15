@@ -101,10 +101,13 @@ public abstract class BaseConversationItem extends LinearLayout
 
     @Override
     public boolean onLongClick(View v) {
+      // When text selection is enabled, the selectable bodyText handles long-press itself
+      // (word selection + floating toolbar). Other views (quote, media) still route to
+      // whole-message multi-select via performLongClick().
       if (bodyText.hasSelection()) {
         return false;
       }
-      if (Prefs.isTextSelectionEnabled(context)) {
+      if (v == bodyText && Prefs.isTextSelectionEnabled(context)) {
         return false;
       }
       performLongClick();

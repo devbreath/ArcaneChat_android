@@ -13,7 +13,6 @@ import android.view.View;
 import android.widget.TextView;
 import androidx.core.content.ContextCompat;
 import org.thoughtcrime.securesms.R;
-import org.thoughtcrime.securesms.util.Prefs;
 
 public class LongClickMovementMethod extends LinkMovementMethod {
   @SuppressLint("StaticFieldLeak")
