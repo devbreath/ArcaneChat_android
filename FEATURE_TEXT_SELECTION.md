@@ -283,7 +283,7 @@
 
 ## Настройка фичи (включение/выключение через Settings)
 
-Фича должна быть доступна через переключатель в разделе настроек "Chats". По умолчанию **выключена** (для безопасного rollout).
+Фича должна быть доступна через переключатель в разделе настроек "Chats". По умолчанию **включена** (Telegram-style поведение из коробки; переключатель остаётся для возврата к legacy-режиму).
 
 ### Архитектурное решение: SharedPreferences vs Core config
 
@@ -304,7 +304,7 @@
 
 ```xml
 <org.thoughtcrime.securesms.components.SwitchPreferenceCompat
-    android:defaultValue="false"
+    android:defaultValue="true"
     android:key="pref_text_selection"
     android:summary="@string/pref_text_selection_explain"
     android:title="@string/pref_text_selection" />
@@ -316,7 +316,7 @@
 private static final String TEXT_SELECTION_PREF = "pref_text_selection";
 
 public static boolean isTextSelectionEnabled(Context context) {
-    return getBooleanPreference(context, TEXT_SELECTION_PREF, false);
+    return getBooleanPreference(context, TEXT_SELECTION_PREF, true);
 }
 ```
 

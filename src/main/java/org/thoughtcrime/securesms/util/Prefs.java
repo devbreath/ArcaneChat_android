@@ -144,7 +144,7 @@ public class Prefs {
   }
 
   public static boolean isTextSelectionEnabled(Context context) {
-    return getBooleanPreference(context, TEXT_SELECTION_PREF, false);
+    return getBooleanPreference(context, TEXT_SELECTION_PREF, true);
   }
 
   public static boolean isPasswordDisabled(Context context) {
