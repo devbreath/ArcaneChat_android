@@ -31,6 +31,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.DimenRes;
@@ -75,14 +76,19 @@ import org.thoughtcrime.securesms.mms.VcardSlide;
 import org.thoughtcrime.securesms.reactions.ReactionsConversationView;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.updater.AppUpdate;
+import org.thoughtcrime.securesms.util.IntentUtils;
 import org.thoughtcrime.securesms.util.Linkifier;
 import org.thoughtcrime.securesms.util.LongClickCopySpan;
 import org.thoughtcrime.securesms.util.LongClickMovementMethod;
 import org.thoughtcrime.securesms.util.MarkdownUtil;
 import org.thoughtcrime.securesms.util.MediaUtil;
+import org.thoughtcrime.securesms.util.Prefs;
 import org.thoughtcrime.securesms.util.Util;
 import org.thoughtcrime.securesms.util.ViewUtil;
 import org.thoughtcrime.securesms.util.views.Stub;
+import org.thoughtcrime.securesms.youtube.YouTubePreview;
+import org.thoughtcrime.securesms.youtube.YouTubePreviewFetcher;
+import org.thoughtcrime.securesms.youtube.YouTubeUrlParser;
 
 /**
  * A view that displays an individual conversation item within a conversation thread. Used by
@@ -115,6 +121,10 @@ public class ConversationItem extends BaseConversationItem {
   private ViewGroup container;
   private Button msgActionButton;
   private Button showFullButton;
+  private View youtubePreviewCard;
+  private ImageView youtubePreviewThumbnail;
+  private TextView youtubePreviewTitle;
+  private TextView youtubePreviewSubtitle;
 
   private @NonNull Stub<ConversationItemThumbnail> mediaThumbnailStub;
   private @NonNull Stub<AudioView> audioViewStub;
@@ -132,6 +142,8 @@ public class ConversationItem extends BaseConversationItem {
 
   private int incomingBubbleColor;
   private int outgoingBubbleColor;
+  private int incomingTextPrimaryColor;
+  private int outgoingTextPrimaryColor;
   private int incomingTextSecondaryColor;
   private int outgoingTextSecondaryColor;
 
@@ -170,6 +182,10 @@ public class ConversationItem extends BaseConversationItem {
     this.jumptoView = findViewById(R.id.jumpto_icon);
     this.msgActionButton = findViewById(R.id.msg_action_button);
     this.showFullButton = findViewById(R.id.show_full_button);
+    this.youtubePreviewCard = findViewById(R.id.youtube_preview_card);
+    this.youtubePreviewThumbnail = findViewById(R.id.youtube_preview_thumbnail);
+    this.youtubePreviewTitle = findViewById(R.id.youtube_preview_title);
+    this.youtubePreviewSubtitle = findViewById(R.id.youtube_preview_subtitle);
 
     setOnClickListener(new ClickListener(null));
 
@@ -223,6 +239,7 @@ public class ConversationItem extends BaseConversationItem {
     setReactions(messageRecord);
     setFooter(messageRecord);
     setQuote(messageRecord);
+    setYoutubePreview(messageRecord);
     if (Util.isTouchExplorationEnabled(context)) {
       setContentDescription();
     }
@@ -288,12 +305,16 @@ public class ConversationItem extends BaseConversationItem {
           R.attr.conversation_item_outgoing_bubble_color,
           R.attr.conversation_item_incoming_text_secondary_color,
           R.attr.conversation_item_outgoing_text_secondary_color,
+          R.attr.conversation_item_incoming_text_primary_color,
+          R.attr.conversation_item_outgoing_text_primary_color,
         };
     try (TypedArray attrs = context.obtainStyledAttributes(attributes)) {
       incomingBubbleColor = attrs.getColor(0, Color.WHITE);
       outgoingBubbleColor = attrs.getColor(1, Color.WHITE);
       incomingTextSecondaryColor = attrs.getColor(2, Color.BLACK);
       outgoingTextSecondaryColor = attrs.getColor(3, Color.BLACK);
+      incomingTextPrimaryColor = attrs.getColor(4, Color.BLACK);
+      outgoingTextPrimaryColor = attrs.getColor(5, Color.BLACK);
     }
   }
 
@@ -878,6 +899,87 @@ public class ConversationItem extends BaseConversationItem {
     } else if (stickerStub.resolved()) {
       ViewUtil.setTopMargin(stickerStub.get(), readDimen(R.dimen.message_bubble_top_padding));
     }
+  }
+
+  private void setYoutubePreview(@NonNull DcMsg current) {
+    if (youtubePreviewCard == null) {
+      return;
+    }
+    String videoId = null;
+    String watchUrl = null;
+    if (Prefs.isYoutubePreviewEnabled(context) && current.getType() == DcMsg.DC_MSG_TEXT) {
+      String text = current.getText();
+      if (text != null && !text.isEmpty()) {
+        watchUrl = YouTubeUrlParser.extractFirstYouTubeUrl(text);
+        if (watchUrl != null) {
+          videoId = YouTubeUrlParser.extractVideoId(watchUrl);
+        }
+      }
+    }
+    if (videoId == null) {
+      youtubePreviewCard.setTag(null);
+      youtubePreviewCard.setVisibility(View.GONE);
+      if (youtubePreviewThumbnail != null) {
+        glideRequests.clear(youtubePreviewThumbnail);
+        youtubePreviewThumbnail.setImageDrawable(null);
+      }
+      return;
+    }
+    final String boundVideoId = videoId;
+    final String boundWatchUrl = watchUrl;
+    youtubePreviewCard.setTag(boundVideoId);
+    youtubePreviewCard.setVisibility(View.VISIBLE);
+    boolean outgoing = current.isOutgoing();
+    youtubePreviewTitle.setTextColor(
+        outgoing ? outgoingTextPrimaryColor : incomingTextPrimaryColor);
+    youtubePreviewSubtitle.setTextColor(
+        outgoing ? outgoingTextSecondaryColor : incomingTextSecondaryColor);
+    youtubePreviewTitle.setText("");
+    youtubePreviewSubtitle.setText("");
+    if (youtubePreviewThumbnail != null) {
+      glideRequests.clear(youtubePreviewThumbnail);
+      youtubePreviewThumbnail.setImageDrawable(null);
+    }
+    youtubePreviewCard.setOnClickListener(
+        view -> {
+          if (!batchSelected.isEmpty()) {
+            passthroughClickListener.onClick(view);
+          } else {
+            IntentUtils.showInBrowser(context, boundWatchUrl);
+          }
+        });
+    youtubePreviewCard.setOnLongClickListener(passthroughClickListener);
+    YouTubePreviewFetcher.getInstance(context)
+        .fetch(
+            boundVideoId,
+            boundWatchUrl,
+            new YouTubePreviewFetcher.Callback() {
+              @Override
+              public void onPreviewLoaded(@NonNull YouTubePreview preview) {
+                if (!boundVideoId.equals(youtubePreviewCard.getTag())
+                    || !Prefs.isYoutubePreviewEnabled(context)) {
+                  return;
+                }
+                if (preview.getTitle() != null) {
+                  youtubePreviewTitle.setText(preview.getTitle());
+                }
+                String subtitle = preview.getSubtitle();
+                if (subtitle != null) {
+                  youtubePreviewSubtitle.setText(subtitle);
+                }
+                if (youtubePreviewThumbnail != null && preview.getThumbnailUrl() != null) {
+                  glideRequests.load(preview.getThumbnailUrl()).into(youtubePreviewThumbnail);
+                }
+              }
+
+              @Override
+              public void onPreviewFailed() {
+                if (!boundVideoId.equals(youtubePreviewCard.getTag())) {
+                  return;
+                }
+                youtubePreviewCard.setVisibility(View.GONE);
+              }
+            });
   }
 
   private void setGutterSizes(@NonNull DcMsg current, boolean showSender) {

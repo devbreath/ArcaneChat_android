@@ -801,6 +801,8 @@
     <!-- Option name for changing behaviour of the "Enter key" to sending out a message directly (instead of adding new line). If in doubt, please refer to a similar option in other messengers. -->
     <string name="pref_enter_sends">Отправка по Enter</string>
     <string name="pref_enter_sends_explain">Нажатие клавиши Enter отправит текстовые сообщения</string>
+    <string name="pref_youtube_previews">Превью YouTube</string>
+    <string name="pref_youtube_previews_explain">Показывать название и миниатюру для ссылок YouTube</string>
     <string name="pref_outgoing_media_quality">Качество отправляемых медиафайлов</string>
     <string name="pref_outgoing_media_quality_hint">Чтобы отправить файлы в исходном качестве, прикрепляйте их как \"Файл\". Это потребует больше трафика для вас и ваших получателей.</string>
     <string name="pref_outgoing_balanced">Сбалансированное</string>

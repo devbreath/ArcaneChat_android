@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- YouTube link preview card shown below the message text, Telegram-style: 16:9 thumbnail on top, bold
+    title, author/description subtitle, "YouTube" label. Colors come from the conversation theme attrs so
+    it works in light and dark themes. -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/youtube_preview_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginLeft="@dimen/message_bubble_horizontal_padding"
+    android:layout_marginRight="@dimen/message_bubble_horizontal_padding"
+    android:layout_marginBottom="@dimen/message_bubble_collapsed_footer_padding"
+    android:orientation="vertical"
+    android:background="@drawable/youtube_preview_background"
+    android:visibility="gone"
+    tools:visibility="visible">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <ImageView
+            android:id="@+id/youtube_preview_thumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="180dp"
+            android:scaleType="centerCrop"
+            android:importantForAccessibility="no" />
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center"
+            android:src="@drawable/play_icon"
+            android:alpha="0.9"
+            android:importantForAccessibility="no" />
+
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/youtube_preview_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="8dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:textSize="14sp"
+        tools:text="Some interesting video title that spans two lines" />
+
+    <TextView
+        android:id="@+id/youtube_preview_subtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="2dp"
+        android:maxLines="3"
+        android:ellipsize="end"
+        android:textSize="13sp"
+        tools:text="Channel name — short video description goes here" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp"
+        android:textSize="12sp"
+        android:textColor="?attr/colorAccent"
+        android:text="YouTube" />
+
+</LinearLayout>

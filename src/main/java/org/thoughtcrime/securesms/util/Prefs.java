@@ -139,6 +139,16 @@ public class Prefs {
     return getBooleanPreference(context, ENTER_SENDS_PREF, false);
   }
 
+  public static final String YOUTUBE_PREVIEWS_PREF = "pref_youtube_previews";
+
+  public static boolean isYoutubePreviewEnabled(Context context) {
+    return getBooleanPreference(context, YOUTUBE_PREVIEWS_PREF, true);
+  }
+
+  public static void setYoutubePreviewEnabled(Context context, boolean value) {
+    setBooleanPreference(context, YOUTUBE_PREVIEWS_PREF, value);
+  }
+
   public static boolean isPasswordDisabled(Context context) {
     return getBooleanPreference(context, DISABLE_PASSPHRASE_PREF, false);
   }

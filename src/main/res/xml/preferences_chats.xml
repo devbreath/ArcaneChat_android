@@ -8,6 +8,12 @@
         android:summary="@string/pref_enter_sends_explain"
         android:title="@string/pref_enter_sends" />
 
+    <org.thoughtcrime.securesms.components.SwitchPreferenceCompat
+        android:defaultValue="true"
+        android:key="pref_youtube_previews"
+        android:summary="@string/pref_youtube_previews_explain"
+        android:title="@string/pref_youtube_previews" />
+
     <ListPreference
         android:key="pref_compression"
         android:title="@string/pref_outgoing_media_quality"
