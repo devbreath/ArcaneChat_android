@@ -103,7 +103,7 @@ git checkout -b upstream/my-feature upstream/main
 # ... код ...
 git push -u origin upstream/my-feature
 gh pr create --repo devbreath/ArcaneChat_android `
-  --head upstream/my-feature --base main `
+  --head upstream/my-feature --base fork-main `
   --label upstream --draft `
   --title "feat: ..." --body "..."
 ```
