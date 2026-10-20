@@ -74,6 +74,7 @@ import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.relay.EditRelayActivity;
 import org.thoughtcrime.securesms.updater.AppUpdate;
 import org.thoughtcrime.securesms.util.AccessibilityUtil;
+import org.thoughtcrime.securesms.util.ChatPositionMemory;
 import org.thoughtcrime.securesms.util.Debouncer;
 import org.thoughtcrime.securesms.util.StickyHeaderDecoration;
 import org.thoughtcrime.securesms.util.Util;
@@ -111,6 +112,9 @@ public class ConversationFragment extends MessageSelectorFragment {
   public boolean isAdmin;
   public boolean isPaused;
   private Debouncer markseenDebouncer;
+  private Debouncer positionMemoryDebouncer;
+  private boolean restoredSavedPosition;
+  private boolean userScrolled;
   private Rpc rpc;
   private boolean pendingAddBottomInsets;
   private boolean pendingRemoveBottomInsets;
@@ -130,6 +134,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     eventCenter.addObserver(DcContext.DC_EVENT_PINNED_MESSAGES_CHANGED, this);
 
     markseenDebouncer = new Debouncer(800);
+    positionMemoryDebouncer = new Debouncer(1500);
     reloadTimer = new Timer("reloadTimer", false);
     reloadTimer.scheduleAtFixedRate(
         new TimerTask() {
@@ -328,6 +333,8 @@ public class ConversationFragment extends MessageSelectorFragment {
   public void onPause() {
     super.onPause();
     setLastSeen(System.currentTimeMillis());
+    saveVisiblePosition();
+    positionMemoryDebouncer.clear();
     isPaused = true;
   }
 
@@ -342,6 +349,7 @@ public class ConversationFragment extends MessageSelectorFragment {
       actionMode.finish();
     }
 
+    saveVisiblePosition();
     initializeResources();
     initializeListAdapter();
     loadPinnedMessages(true);
@@ -353,6 +361,11 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   public void moveToLastSeen() {
+    if (restoredSavedPosition) {
+      // fork-only: a saved reading position was just restored, do not override it
+      restoredSavedPosition = false;
+      return;
+    }
     if (list == null || getListAdapter() == null) {
       Log.w(TAG, "Tried to move to last seen position, but we hadn't initialized the view yet.");
       return;
@@ -403,6 +416,8 @@ public class ConversationFragment extends MessageSelectorFragment {
             .getIntent()
             .getIntExtra(ConversationActivity.STARTING_POSITION_EXTRA, -1);
     this.firstLoad = true;
+    this.restoredSavedPosition = false;
+    this.userScrolled = false;
 
     if (scrollListener != null) {
       list.removeOnScrollListener(scrollListener);
@@ -572,6 +587,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     this.recipient = recipient;
 
     if (this.chatId != chatId) {
+      saveVisiblePosition();
       this.chatId = chatId;
       initializeListAdapter();
       loadPinnedMessages(true);
@@ -814,6 +830,13 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (firstLoad) {
       if (startingPosition >= 0) {
         getListAdapter().pulseHighlightItem(startingPosition);
+      } else {
+        int restoredPosition = resolveSavedPosition();
+        if (restoredPosition > -1) {
+          ((SetStartingPositionLinearLayoutManager) list.getLayoutManager())
+              .setStartingPosition(restoredPosition);
+          restoredSavedPosition = true;
+        }
       }
       firstLoad = false;
     } else if (oldIndex > 0) {
@@ -893,6 +916,76 @@ public class ConversationFragment extends MessageSelectorFragment {
     }
   }
 
+  // fork-only: remember the topmost visible message, so the reading position survives
+  // leaving the chat or restarting the app. With reverseLayout the topmost visible item
+  // is the last visible position.
+  private void saveVisiblePosition() {
+    if (list == null || getContext() == null || rpc == null || chatId <= 0) {
+      return;
+    }
+    ConversationAdapter adapter = getListAdapter();
+    if (adapter == null || adapter.getItemCount() == 0) {
+      return;
+    }
+    if (!(list.getLayoutManager() instanceof LinearLayoutManager)) {
+      return;
+    }
+    int pos = ((LinearLayoutManager) list.getLayoutManager()).findLastVisibleItemPosition();
+    if (pos == RecyclerView.NO_POSITION) {
+      return;
+    }
+    DcMsg msg = adapter.getMsg(pos);
+    if (msg == null || msg.getId() <= 0) {
+      return;
+    }
+    int accountId;
+    try {
+      accountId = rpc.getSelectedAccountId();
+    } catch (RpcException e) {
+      Log.e(TAG, "RPC error", e);
+      return;
+    }
+    ChatPositionMemory.setLastVisibleMsgId(getContext(), accountId, chatId, msg.getId());
+  }
+
+  // fork-only: resolve the adapter position for the remembered message.
+  // Returns -1 when there is nothing to restore. When the remembered message was deleted,
+  // falls back to the previous (older) message still present in the chat.
+  private int resolveSavedPosition() {
+    if (list == null || getContext() == null || rpc == null || chatId <= 0) {
+      return -1;
+    }
+    ConversationAdapter adapter = getListAdapter();
+    if (adapter == null) {
+      return -1;
+    }
+    int accountId;
+    try {
+      accountId = rpc.getSelectedAccountId();
+    } catch (RpcException e) {
+      Log.e(TAG, "RPC error", e);
+      return -1;
+    }
+    int savedMsgId = ChatPositionMemory.getLastVisibleMsgId(getContext(), accountId, chatId);
+    if (savedMsgId <= 0) {
+      return -1;
+    }
+    int position = adapter.msgIdToPosition(savedMsgId);
+    if (position != -1) {
+      return position;
+    }
+    int fallbackId = 0;
+    for (int id : adapter.getMessageIds()) {
+      if (id < savedMsgId && id > fallbackId) {
+        fallbackId = id;
+      }
+    }
+    if (fallbackId <= 0) {
+      return -1;
+    }
+    return adapter.msgIdToPosition(fallbackId);
+  }
+
   public interface ConversationFragmentListener {
     void handleReplyMessage(DcMsg messageRecord);
 
@@ -944,6 +1037,15 @@ public class ConversationFragment extends MessageSelectorFragment {
       //      } else if (newState == RecyclerView.SCROLL_STATE_IDLE) {
       //        conversationDateHeader.hide();
       //      }
+      // fork-only: backup the reading position after a manual scroll,
+      // so it also survives a process kill. Programmatic scrolls (search,
+      // jump-to-original, quote) never pass through DRAGGING and are ignored.
+      if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+        userScrolled = true;
+      } else if (newState == RecyclerView.SCROLL_STATE_IDLE && userScrolled) {
+        userScrolled = false;
+        positionMemoryDebouncer.publish(ConversationFragment.this::saveVisiblePosition);
+      }
     }
 
     private boolean isAtBottom() {
