@@ -958,7 +958,9 @@ public class ConversationFragment extends MessageSelectorFragment {
 
   // fork-only: resolve the adapter position for the remembered message.
   // Returns -1 when there is nothing to restore. When the remembered message was deleted,
-  // falls back to the previous (older) message still present in the chat.
+  // falls back to the previous (older) message still present in the chat. When nothing
+  // is resolvable anymore (chat cleared, all messages deleted, ephemeral timer wiped them),
+  // the stale key is dropped so later opens skip the fruitless scan and follow the normal path.
   private int resolveSavedPosition() {
     if (list == null || getContext() == null || rpc == null || chatId <= 0) {
       return -1;
@@ -989,6 +991,10 @@ public class ConversationFragment extends MessageSelectorFragment {
       }
     }
     if (fallbackId <= 0) {
+      // fork-only: nothing to restore (chat cleared, all older messages gone,
+      // ephemeral timer wiped them) — drop the stale key so later opens skip
+      // the fruitless scan and follow the normal bottom/last-seen path.
+      ChatPositionMemory.clearLastVisibleMsgId(getContext(), accountId, chatId);
       return -1;
     }
     return adapter.msgIdToPosition(fallbackId);
