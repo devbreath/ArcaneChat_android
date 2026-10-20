@@ -197,6 +197,10 @@ git checkout -b upstream/<name> upstream/main
 # фича в форк
 git checkout -b fork/<name> fork-main
 
+# апстрим-фичу в сборку форка (внутрифорковый PR)
+gh pr create --repo devbreath/ArcaneChat_android `
+  --head upstream/<name> --base fork-main --label upstream
+
 # что уедет в PR
 git log --oneline upstream/main..HEAD
 ```
