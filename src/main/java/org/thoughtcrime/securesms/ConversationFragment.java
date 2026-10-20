@@ -350,6 +350,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     }
 
     saveVisiblePosition();
+    positionMemoryDebouncer.clear();
     initializeResources();
     initializeListAdapter();
     loadPinnedMessages(true);
@@ -588,6 +589,7 @@ public class ConversationFragment extends MessageSelectorFragment {
 
     if (this.chatId != chatId) {
       saveVisiblePosition();
+      positionMemoryDebouncer.clear();
       this.chatId = chatId;
       initializeListAdapter();
       loadPinnedMessages(true);
@@ -918,7 +920,8 @@ public class ConversationFragment extends MessageSelectorFragment {
 
   // fork-only: remember the topmost visible message, so the reading position survives
   // leaving the chat or restarting the app. With reverseLayout the topmost visible item
-  // is the last visible position.
+  // is the last visible position. When the user is at the very bottom, the saved
+  // position is cleared instead, so reopening follows the normal bottom path.
   private void saveVisiblePosition() {
     if (list == null || getContext() == null || rpc == null || chatId <= 0) {
       return;
@@ -930,12 +933,9 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (!(list.getLayoutManager() instanceof LinearLayoutManager)) {
       return;
     }
-    int pos = ((LinearLayoutManager) list.getLayoutManager()).findLastVisibleItemPosition();
+    LinearLayoutManager layoutManager = (LinearLayoutManager) list.getLayoutManager();
+    int pos = layoutManager.findLastVisibleItemPosition();
     if (pos == RecyclerView.NO_POSITION) {
-      return;
-    }
-    DcMsg msg = adapter.getMsg(pos);
-    if (msg == null || msg.getId() <= 0) {
       return;
     }
     int accountId;
@@ -943,6 +943,14 @@ public class ConversationFragment extends MessageSelectorFragment {
       accountId = rpc.getSelectedAccountId();
     } catch (RpcException e) {
       Log.e(TAG, "RPC error", e);
+      return;
+    }
+    if (layoutManager.findFirstVisibleItemPosition() == 0) {
+      ChatPositionMemory.clearLastVisibleMsgId(getContext(), accountId, chatId);
+      return;
+    }
+    DcMsg msg = adapter.getMsg(pos);
+    if (msg == null || msg.getId() <= 0) {
       return;
     }
     ChatPositionMemory.setLastVisibleMsgId(getContext(), accountId, chatId, msg.getId());
