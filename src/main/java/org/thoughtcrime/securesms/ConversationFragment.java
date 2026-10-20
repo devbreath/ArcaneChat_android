@@ -311,14 +311,12 @@ public class ConversationFragment extends MessageSelectorFragment {
   @Override
   public void onResume() {
     super.onResume();
-    Util.runOnBackground(
-        () -> {
-          try {
-            rpc.marknoticedChat(rpc.getSelectedAccountId(), (int) chatId);
-          } catch (RpcException e) {
-            Log.e(TAG, "RPC error", e);
-          }
-        });
+    // fork-only: do NOT call marknoticedChat() here. The stock behavior marks every
+    // fresh message as noticed on entering the chat, which zeroes the unread badge
+    // immediately. Instead the badge must shrink gradually: manageMessageSeenState()
+    // marks only the actually viewed messages as seen while scrolling, and each
+    // markseen_msgs() emits MsgsNoticed so the chatlist badge follows along.
+    // (System notifications are still cleared on entering via updateVisibleChat().)
     if (list.getAdapter() != null) {
       list.getAdapter().notifyDataSetChanged();
     }
