@@ -901,30 +901,56 @@ public class ConversationFragment extends MessageSelectorFragment {
 
     // fork-only: messages that arrived while the user was at the bottom (oldIndex == 0,
     // i.e. position 0 was completely visible) are on screen but produce no scroll event,
-    // so the viewport mark never covers them. Mark the newly arrived head explicitly:
-    // with reverseLayout, positions [0, msgs.length - oldCount) are the newcomers.
-    // Backlog above still requires scrolling. Guarded by adapter identity: changeData()
-    // above may have swapped the adapter, so re-fetch it before reading positions.
-    if (!wasFirstLoad && oldIndex == 0 && msgs.length > oldCount) {
-      ConversationAdapter freshAdapter = getListAdapter();
-      if (freshAdapter != null) {
-        int newCount = msgs.length - oldCount;
-        ArrayList<Integer> freshIds = new ArrayList<>(newCount);
-        for (int pos = 0; pos < newCount; pos++) {
-          DcMsg message = freshAdapter.getMsg(pos);
-          if (message.getFromId() != DC_CONTACT_ID_SELF) {
-            freshIds.add(message.getId());
+    // so the viewport mark never covers them. Mark the visible newcomers immediately
+    // (the badge follows faster than via the 800ms trailing mark below): with
+    // reverseLayout, positions [0, msgs.length - oldCount) are the newcomers, intersected
+    // with the actually visible range so a burst arrival above the viewport is not marked
+    // unseen. Backlog above still requires scrolling. Paused (background) arrivals are not
+    // marked: nothing was viewed. No DB access on the main thread: msgs (the getChatMsgs
+    // result just handed to changeData) is the id snapshot, position pos maps to
+    // msgs[msgs.length - 1 - pos] as in getItemId(); per-message reads happen below in
+    // the background.
+    if (!wasFirstLoad && !isPaused && oldIndex == 0 && msgs.length > oldCount) {
+      LinearLayoutManager freshLayout = (LinearLayoutManager) list.getLayoutManager();
+      if (freshLayout != null) {
+        int visFirst = freshLayout.findFirstVisibleItemPosition();
+        int visLast = freshLayout.findLastVisibleItemPosition();
+        if (visFirst != RecyclerView.NO_POSITION && visLast != RecyclerView.NO_POSITION) {
+          int visLo = Math.max(0, Math.min(visFirst, visLast));
+          int visHi = Math.min(msgs.length - 1, Math.max(visFirst, visLast));
+          int markLo = Math.max(0, visLo);
+          int markHi = Math.min(msgs.length - oldCount - 1, visHi);
+          if (markHi >= markLo) {
+            final int rangeLo = markLo;
+            final int rangeHi = markHi;
+            final int[] idSnapshot = msgs;
+            final DcContext freshDcContext =
+                getContext() == null ? null : DcHelper.getContext(getContext());
+            if (freshDcContext != null) {
+              Util.runOnAnyBackgroundThread(
+                  () -> {
+                    try {
+                      int accountId = rpc.getSelectedAccountId();
+                      ArrayList<Integer> freshIds = new ArrayList<>(rangeHi - rangeLo + 1);
+                      for (int pos = rangeLo; pos <= rangeHi; pos++) {
+                        int id = msgIdAtPosition(idSnapshot, pos);
+                        if (id <= 0) {
+                          continue;
+                        }
+                        DcMsg message = freshDcContext.getMsg(id);
+                        if (message.getId() > 0 && message.getFromId() != DC_CONTACT_ID_SELF) {
+                          freshIds.add(message.getId());
+                        }
+                      }
+                      if (!freshIds.isEmpty()) {
+                        rpc.markseenMsgs(accountId, freshIds);
+                      }
+                    } catch (RpcException e) {
+                      Log.e(TAG, "RPC error", e);
+                    }
+                  });
+            }
           }
-        }
-        if (!freshIds.isEmpty()) {
-          Util.runOnAnyBackgroundThread(
-              () -> {
-                try {
-                  rpc.markseenMsgs(rpc.getSelectedAccountId(), freshIds);
-                } catch (RpcException e) {
-                  Log.e(TAG, "RPC error", e);
-                }
-              });
         }
       }
     }
@@ -1110,10 +1136,10 @@ public class ConversationFragment extends MessageSelectorFragment {
 
       // fork-only: throttle intermediate marks during a long continuous scroll, so a fling
       // is covered by several marks instead of a single trailing one. The debouncer below
-      // still emits the trailing mark after the scroll settles.
-      long now = SystemClock.uptimeMillis();
-      if (now - lastMarkseenMs >= SEEN_THROTTLE_MS) {
-        lastMarkseenMs = now;
+      // still emits the trailing mark after the scroll settles. The throttle timestamp is
+      // stamped inside manageMessageSeenState() only after its guards pass, so an early
+      // bail-out does not consume the throttle window — the next scroll event retries.
+      if (SystemClock.uptimeMillis() - lastMarkseenMs >= SEEN_THROTTLE_MS) {
         manageMessageSeenState();
       } else {
         markseenDebouncer.publish(() -> manageMessageSeenState());
@@ -1207,34 +1233,61 @@ public class ConversationFragment extends MessageSelectorFragment {
       }
     }
 
-    ArrayList<Integer> ids = new ArrayList<>(markLast - markFirst + 1);
-    int newFirstMsgId = 0;
-    int newLastMsgId = 0;
-    for (int pos = markFirst; pos <= markLast; pos++) {
-      DcMsg message = adapter.getMsg(pos);
-      if (pos == firstPos) {
-        newFirstMsgId = message.getId();
-      }
-      if (pos == lastPos) {
-        newLastMsgId = message.getId();
-      }
-      if (message.getFromId() != DC_CONTACT_ID_SELF) {
-        ids.add(message.getId());
-      }
+    // fork-only: no DB access on the main thread from here on. msgIdToPosition() above is
+    // a cheap in-memory array scan; the per-message DcMsg reads (JNI+SQL) happen in the
+    // background below. Snapshot the id array: changeData() swaps the reference for a new
+    // array wholesale and never mutates elements, so the old array stays valid to read
+    // from the background. Anchors come from the snapshot via the same index mapping as
+    // getItemId() (dcMsgList[dcMsgList.length - 1 - position]); id <= 0 means "no anchor".
+    int[] idSnapshot = adapter.getMessageIds();
+    if (idSnapshot == null || idSnapshot.length == 0) {
+      return;
     }
+    int newFirstMsgId = msgIdAtPosition(idSnapshot, firstPos);
+    int newLastMsgId = msgIdAtPosition(idSnapshot, lastPos);
     // fork-only: anchor continuity on the actually visible range, not the filled union,
     // so a later jump back over already-marked messages does not re-expand the union.
     lastMarkFirstMsgId = newFirstMsgId;
     lastMarkLastMsgId = newLastMsgId;
     lastMarkseenMs = SystemClock.uptimeMillis();
+    final int rangeFirst = markFirst;
+    final int rangeLast = markLast;
+    final DcContext dcContext = getContext() == null ? null : DcHelper.getContext(getContext());
+    if (dcContext == null) {
+      return;
+    }
     Util.runOnAnyBackgroundThread(
         () -> {
           try {
-            rpc.markseenMsgs(rpc.getSelectedAccountId(), ids);
+            int accountId = rpc.getSelectedAccountId();
+            ArrayList<Integer> ids = new ArrayList<>(rangeLast - rangeFirst + 1);
+            for (int pos = rangeFirst; pos <= rangeLast; pos++) {
+              int id = msgIdAtPosition(idSnapshot, pos);
+              if (id <= 0) {
+                continue;
+              }
+              DcMsg message = dcContext.getMsg(id);
+              if (message.getFromId() != DC_CONTACT_ID_SELF) {
+                ids.add(message.getId());
+              }
+            }
+            if (!ids.isEmpty()) {
+              rpc.markseenMsgs(accountId, ids);
+            }
           } catch (RpcException e) {
             Log.e(TAG, "RPC error", e);
           }
         });
+  }
+
+  // fork-only: id at an adapter position within a getMessageIds() snapshot, mirroring
+  // ConversationAdapter.getItemId(). Returns 0 for out-of-range positions.
+  private static int msgIdAtPosition(int[] idSnapshot, int position) {
+    int index = idSnapshot.length - 1 - position;
+    if (index < 0 || index >= idSnapshot.length) {
+      return 0;
+    }
+    return idSnapshot[index];
   }
 
   private class ConversationFragmentItemClickListener implements ItemClickListener {
