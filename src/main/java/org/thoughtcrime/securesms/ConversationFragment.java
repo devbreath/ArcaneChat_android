@@ -637,14 +637,66 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   public void scrollToBottom() {
-    // fork-only: programmatic jump, breaks markseen continuity.
-    lastMarkFirstMsgId = 0;
-    lastMarkLastMsgId = 0;
-    if (((LinearLayoutManager) list.getLayoutManager()).findFirstVisibleItemPosition()
-            < SCROLL_ANIMATION_THRESHOLD
-        && !AccessibilityUtil.areAnimationsDisabled(getContext())) {
+    // fork-only: jump to the newest message with catch-up marking. Continuity is kept
+    // (no anchor reset): the smooth path is marked on arrival at the bottom (uncapped,
+    // see markCatchUpToBottomIfNeeded), the instant path is marked synchronously below.
+    // With no prior mark (fresh open), seed anchors with the current viewport so the
+    // arrival catch-up knows the upper bound of the jumped span.
+    ConversationAdapter bottomAdapter = (ConversationAdapter) list.getAdapter();
+    LinearLayoutManager bottomLayout =
+        list.getLayoutManager() instanceof LinearLayoutManager
+            ? (LinearLayoutManager) list.getLayoutManager()
+            : null;
+    int preFirst = RecyclerView.NO_POSITION;
+    int preLast = RecyclerView.NO_POSITION;
+    int[] preSnapshot = null;
+    if (bottomAdapter != null && bottomLayout != null) {
+      preFirst = bottomLayout.findFirstVisibleItemPosition();
+      preLast = bottomLayout.findLastVisibleItemPosition();
+      if (preFirst != RecyclerView.NO_POSITION && preLast != RecyclerView.NO_POSITION) {
+        preSnapshot = bottomAdapter.getMessageIds();
+        if (preSnapshot != null
+            && preSnapshot.length > 0
+            && lastMarkFirstMsgId == 0
+            && lastMarkLastMsgId == 0) {
+          lastMarkFirstMsgId = msgIdAtPosition(preSnapshot, preFirst);
+          lastMarkLastMsgId = msgIdAtPosition(preSnapshot, preLast);
+        }
+      }
+    }
+    boolean nearBottom =
+        preFirst != RecyclerView.NO_POSITION
+            && preFirst < SCROLL_ANIMATION_THRESHOLD
+            && !AccessibilityUtil.areAnimationsDisabled(getContext());
+    if (nearBottom) {
       list.smoothScrollToPosition(0);
     } else {
+      // fork-only: instant jump emits no intermediate scroll events (or a single capped
+      // union), so mark the whole tail to the bottom synchronously, uncapped. Same
+      // background mechanism as the arrival catch-up; anchors end up at the bottom.
+      if (!isPaused
+          && bottomAdapter != null
+          && preSnapshot != null
+          && preSnapshot.length > 0
+          && preFirst != RecyclerView.NO_POSITION
+          && preLast != RecyclerView.NO_POSITION
+          && getContext() != null) {
+        int upperBound = Math.max(preFirst, preLast);
+        if (lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0) {
+          int prevFirst = bottomAdapter.msgIdToPosition(lastMarkFirstMsgId);
+          int prevLast = bottomAdapter.msgIdToPosition(lastMarkLastMsgId);
+          if (prevFirst != -1 && prevLast != -1) {
+            upperBound = Math.max(upperBound, Math.max(prevFirst, prevLast));
+          }
+        }
+        DcContext bottomDcContext = DcHelper.getContext(getContext());
+        if (bottomDcContext != null && upperBound >= 0) {
+          lastMarkFirstMsgId = msgIdAtPosition(preSnapshot, 0);
+          lastMarkLastMsgId = msgIdAtPosition(preSnapshot, 0);
+          lastMarkseenMs = SystemClock.uptimeMillis();
+          markRangeSeenSnapshot(0, upperBound, preSnapshot, bottomDcContext);
+        }
+      }
       list.scrollToPosition(0);
     }
   }
@@ -1124,6 +1176,9 @@ public class ConversationFragment extends MessageSelectorFragment {
 
       if (currentlyAtBottom) {
         ViewUtil.animateOut(scrollToBottomButton, scrollButtonOutAnimation, View.INVISIBLE);
+        // fork-only: arrival at the bottom after a long downward jump/fling — mark the
+        // whole tail, see markCatchUpToBottomIfNeeded().
+        markCatchUpToBottomIfNeeded();
       } else if (currentlyAtZoomScrollHeight) {
         ViewUtil.animateIn(scrollToBottomButton, scrollButtonInAnimation);
       }
@@ -1215,12 +1270,16 @@ public class ConversationFragment extends MessageSelectorFragment {
     // positions) and mark the whole span from the previous to the current viewport, even
     // with a gap: during a continuous user scroll everything in between was physically
     // scrolled through by the user, i.e. "presented at least for a little moment" per the
-    // markseenMsgs core docs. Anchors update only on a completed mark, so the endpoints
-    // suffice and intermediate viewports need not be observed. Above the SEEN_GAP_FILL_MAX
-    // cap, mark visible-only (conservative). False unions after jumps are already guarded:
-    // continuity resets on every programmatic scroll/chat switch/firstLoad, refusal on -1.
+    // markseenMsgs core docs. Above the SEEN_GAP_FILL_MAX cap, mark visible-only
+    // (conservative) and keep the old anchors: the arrival catch-up
+    // (markCatchUpToBottomIfNeeded) still covers the gap uncapped when the user reaches
+    // the bottom. Anchors update only on a completed (uncapped) mark, so the endpoints
+    // suffice and intermediate viewports need not be observed. False unions after jumps
+    // are already guarded: continuity resets on every programmatic scroll/chat
+    // switch/firstLoad, refusal on -1.
     int markFirst = firstPos;
     int markLast = lastPos;
+    boolean keepAnchors = false;
     if (lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0) {
       int prevFirst = adapter.msgIdToPosition(lastMarkFirstMsgId);
       int prevLast = adapter.msgIdToPosition(lastMarkLastMsgId);
@@ -1232,6 +1291,8 @@ public class ConversationFragment extends MessageSelectorFragment {
         if (Math.max(curHi, prevHi) - Math.min(curLo, prevLo) <= SEEN_GAP_FILL_MAX) {
           markFirst = Math.min(curLo, prevLo);
           markLast = Math.max(curHi, prevHi);
+        } else {
+          keepAnchors = true;
         }
       }
     }
@@ -1250,8 +1311,12 @@ public class ConversationFragment extends MessageSelectorFragment {
     int newLastMsgId = msgIdAtPosition(idSnapshot, lastPos);
     // fork-only: anchor continuity on the actually visible range, not the filled union,
     // so a later jump back over already-marked messages does not re-expand the union.
-    lastMarkFirstMsgId = newFirstMsgId;
-    lastMarkLastMsgId = newLastMsgId;
+    // Above the cap (keepAnchors) the old anchors are kept instead, so the arrival
+    // catch-up still knows the upper bound of the jumped span.
+    if (!keepAnchors) {
+      lastMarkFirstMsgId = newFirstMsgId;
+      lastMarkLastMsgId = newLastMsgId;
+    }
     lastMarkseenMs = SystemClock.uptimeMillis();
     final int rangeFirst = markFirst;
     final int rangeLast = markLast;
@@ -1259,17 +1324,44 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (dcContext == null) {
       return;
     }
+    markRangeSeenSnapshot(rangeFirst, rangeLast, idSnapshot, dcContext);
+  }
+
+  // fork-only: id at an adapter position within a getMessageIds() snapshot, mirroring
+  // ConversationAdapter.getItemId(). Returns 0 for out-of-range positions.
+  private static int msgIdAtPosition(int[] idSnapshot, int position) {
+    int index = idSnapshot.length - 1 - position;
+    if (index < 0 || index >= idSnapshot.length) {
+      return 0;
+    }
+    return idSnapshot[index];
+  }
+
+  // fork-only: shared background marking of an adapter-position range from a getMessageIds()
+  // snapshot. Snapshot on the main thread (changeData swaps the array reference wholesale,
+  // elements are never mutated), per-message DcMsg reads (JNI+SQL) in the background.
+  // Skips id <= 0 and own messages; anchors end up at the bottom (position 0 visible).
+  private void markRangeSeenSnapshot(
+      int rangeFirst, int rangeLast, int[] idSnapshot, DcContext markDcContext) {
+    if (rangeLast < rangeFirst || idSnapshot == null || idSnapshot.length == 0) {
+      return;
+    }
+    final int markFirst = Math.max(0, rangeFirst);
+    final int markLast = Math.min(idSnapshot.length - 1, rangeLast);
+    if (markLast < markFirst) {
+      return;
+    }
     Util.runOnAnyBackgroundThread(
         () -> {
           try {
             int accountId = rpc.getSelectedAccountId();
-            ArrayList<Integer> ids = new ArrayList<>(rangeLast - rangeFirst + 1);
-            for (int pos = rangeFirst; pos <= rangeLast; pos++) {
+            ArrayList<Integer> ids = new ArrayList<>(markLast - markFirst + 1);
+            for (int pos = markFirst; pos <= markLast; pos++) {
               int id = msgIdAtPosition(idSnapshot, pos);
               if (id <= 0) {
                 continue;
               }
-              DcMsg message = dcContext.getMsg(id);
+              DcMsg message = markDcContext.getMsg(id);
               if (message.getFromId() != DC_CONTACT_ID_SELF) {
                 ids.add(message.getId());
               }
@@ -1283,14 +1375,59 @@ public class ConversationFragment extends MessageSelectorFragment {
         });
   }
 
-  // fork-only: id at an adapter position within a getMessageIds() snapshot, mirroring
-  // ConversationAdapter.getItemId(). Returns 0 for out-of-range positions.
-  private static int msgIdAtPosition(int[] idSnapshot, int position) {
-    int index = idSnapshot.length - 1 - position;
-    if (index < 0 || index >= idSnapshot.length) {
-      return 0;
+  // fork-only: catch-up marking on arrival at the bottom after a long downward jump or
+  // fling. The throttled/debounced viewport marks (capped by SEEN_GAP_FILL_MAX) cannot
+  // cover a whole backlog jumped through at once; the user physically scrolled through
+  // everything, so mark the tail from the bottom (position 0) up to the upper bound of
+  // the last marked/visible range, uncapped. Guarded against false catch-ups after a
+  // restore jump on open: only when the user actually scrolled (userScrolled, set on
+  // DRAGGING) or continuity anchors exist (a mark already happened in this session).
+  // Anchors end up at the bottom, so saveVisiblePosition() clears the key on exit and
+  // reopening follows the normal bottom path with freshMsgs == 0.
+  private void markCatchUpToBottomIfNeeded() {
+    if (isPaused || firstLoad || list == null || getContext() == null) {
+      return;
     }
-    return idSnapshot[index];
+    ConversationAdapter adapter = (ConversationAdapter) list.getAdapter();
+    if (adapter == null || !(list.getLayoutManager() instanceof LinearLayoutManager)) {
+      return;
+    }
+    LinearLayoutManager layoutManager = (LinearLayoutManager) list.getLayoutManager();
+    int firstPos = layoutManager.findFirstVisibleItemPosition();
+    int lastPos = layoutManager.findLastVisibleItemPosition();
+    if (firstPos == RecyclerView.NO_POSITION || lastPos == RecyclerView.NO_POSITION) {
+      return;
+    }
+    if (firstPos != 0) {
+      return;
+    }
+    boolean hasAnchors = lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0;
+    if (!userScrolled && !hasAnchors) {
+      return;
+    }
+    int upperBound = Math.max(firstPos, lastPos);
+    if (hasAnchors) {
+      int prevFirst = adapter.msgIdToPosition(lastMarkFirstMsgId);
+      int prevLast = adapter.msgIdToPosition(lastMarkLastMsgId);
+      if (prevFirst != -1 && prevLast != -1) {
+        upperBound = Math.max(upperBound, Math.max(prevFirst, prevLast));
+      }
+    }
+    if (upperBound <= Math.max(firstPos, lastPos)) {
+      return;
+    }
+    int[] idSnapshot = adapter.getMessageIds();
+    if (idSnapshot == null || idSnapshot.length == 0) {
+      return;
+    }
+    DcContext dcContext = DcHelper.getContext(getContext());
+    if (dcContext == null) {
+      return;
+    }
+    lastMarkFirstMsgId = msgIdAtPosition(idSnapshot, 0);
+    lastMarkLastMsgId = msgIdAtPosition(idSnapshot, 0);
+    lastMarkseenMs = SystemClock.uptimeMillis();
+    markRangeSeenSnapshot(0, upperBound, idSnapshot, dcContext);
   }
 
   private class ConversationFragmentItemClickListener implements ItemClickListener {
