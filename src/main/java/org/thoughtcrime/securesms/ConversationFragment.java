@@ -25,6 +25,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -87,6 +88,14 @@ public class ConversationFragment extends MessageSelectorFragment {
 
   private static final int SCROLL_ANIMATION_THRESHOLD = 50;
 
+  // fork-only: largest message span a single markseen pass may cover when filling the gap
+  // flown through between two consecutive marks. Together with the scroll throttle below
+  // this covers ~1s of fast fling; larger jumps are marked visible-only.
+  private static final int SEEN_GAP_FILL_MAX = 300;
+  // fork-only: minimum interval between markseen passes during continuous scrolling.
+  // The 800ms debouncer still emits the trailing mark after the scroll settles.
+  private static final long SEEN_THROTTLE_MS = 1000;
+
   private final ActionModeCallback actionModeCallback = new ActionModeCallback();
   private final ItemClickListener selectionClickListener =
       new ConversationFragmentItemClickListener();
@@ -115,6 +124,12 @@ public class ConversationFragment extends MessageSelectorFragment {
   private Debouncer positionMemoryDebouncer;
   private boolean restoredSavedPosition;
   private boolean userScrolled;
+  // fork-only: continuity of markseen coverage across marks. Boundaries of the last marked
+  // range as msgIds (stable across insertions, unlike positions); 0 means "no anchor yet".
+  private int lastMarkFirstMsgId;
+  private int lastMarkLastMsgId;
+  // fork-only: last markseen pass time, for the scroll throttle.
+  private long lastMarkseenMs;
   private Rpc rpc;
   private boolean pendingAddBottomInsets;
   private boolean pendingRemoveBottomInsets;
@@ -375,6 +390,9 @@ public class ConversationFragment extends MessageSelectorFragment {
     }
     final int lastSeenPosition = getListAdapter().getLastSeenPosition() + 1;
     if (lastSeenPosition > 0) {
+      // fork-only: programmatic jump, breaks markseen continuity.
+      lastMarkFirstMsgId = 0;
+      lastMarkLastMsgId = 0;
       list.post(
           () ->
               ((LinearLayoutManager) list.getLayoutManager())
@@ -417,6 +435,11 @@ public class ConversationFragment extends MessageSelectorFragment {
     this.firstLoad = true;
     this.restoredSavedPosition = false;
     this.userScrolled = false;
+    // fork-only: new chat, no continuity with the previous mark range.
+    this.lastMarkFirstMsgId = 0;
+    this.lastMarkLastMsgId = 0;
+    this.lastMarkseenMs = 0;
+    markseenDebouncer.clear();
 
     if (scrollListener != null) {
       list.removeOnScrollListener(scrollListener);
@@ -588,6 +611,11 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (this.chatId != chatId) {
       saveVisiblePosition();
       positionMemoryDebouncer.clear();
+      markseenDebouncer.clear();
+      // fork-only: new chat, no continuity with the previous mark range.
+      lastMarkFirstMsgId = 0;
+      lastMarkLastMsgId = 0;
+      lastMarkseenMs = 0;
       this.chatId = chatId;
       initializeListAdapter();
       loadPinnedMessages(true);
@@ -598,6 +626,9 @@ public class ConversationFragment extends MessageSelectorFragment {
     ConversationAdapter adapter = (ConversationAdapter) list.getAdapter();
     if (adapter.getItemCount() > 0) {
       final int pos = adapter.getItemCount() - 1;
+      // fork-only: programmatic jump, breaks markseen continuity.
+      lastMarkFirstMsgId = 0;
+      lastMarkLastMsgId = 0;
       list.post(
           () -> {
             list.getLayoutManager().scrollToPosition(pos);
@@ -606,6 +637,9 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   public void scrollToBottom() {
+    // fork-only: programmatic jump, breaks markseen continuity.
+    lastMarkFirstMsgId = 0;
+    lastMarkLastMsgId = 0;
     if (((LinearLayoutManager) list.getLayoutManager()).findFirstVisibleItemPosition()
             < SCROLL_ANIMATION_THRESHOLD
         && !AccessibilityUtil.areAnimationsDisabled(getContext())) {
@@ -827,6 +861,7 @@ public class ConversationFragment extends MessageSelectorFragment {
 
     adapter.changeData(msgs);
 
+    boolean wasFirstLoad = firstLoad;
     if (firstLoad) {
       if (startingPosition >= 0) {
         getListAdapter().pulseHighlightItem(startingPosition);
@@ -839,6 +874,9 @@ public class ConversationFragment extends MessageSelectorFragment {
         }
       }
       firstLoad = false;
+      // fork-only: fresh open/restore, no continuity with any previous mark range.
+      lastMarkFirstMsgId = 0;
+      lastMarkLastMsgId = 0;
     } else if (oldIndex > 0) {
       int newIndex = oldIndex + msgs.length - oldCount;
 
@@ -861,6 +899,36 @@ public class ConversationFragment extends MessageSelectorFragment {
       noMessageTextView.setVisibility(View.GONE);
     }
 
+    // fork-only: messages that arrived while the user was at the bottom (oldIndex == 0,
+    // i.e. position 0 was completely visible) are on screen but produce no scroll event,
+    // so the viewport mark never covers them. Mark the newly arrived head explicitly:
+    // with reverseLayout, positions [0, msgs.length - oldCount) are the newcomers.
+    // Backlog above still requires scrolling. Guarded by adapter identity: changeData()
+    // above may have swapped the adapter, so re-fetch it before reading positions.
+    if (!wasFirstLoad && oldIndex == 0 && msgs.length > oldCount) {
+      ConversationAdapter freshAdapter = getListAdapter();
+      if (freshAdapter != null) {
+        int newCount = msgs.length - oldCount;
+        ArrayList<Integer> freshIds = new ArrayList<>(newCount);
+        for (int pos = 0; pos < newCount; pos++) {
+          DcMsg message = freshAdapter.getMsg(pos);
+          if (message.getFromId() != DC_CONTACT_ID_SELF) {
+            freshIds.add(message.getId());
+          }
+        }
+        if (!freshIds.isEmpty()) {
+          Util.runOnAnyBackgroundThread(
+              () -> {
+                try {
+                  rpc.markseenMsgs(rpc.getSelectedAccountId(), freshIds);
+                } catch (RpcException e) {
+                  Log.e(TAG, "RPC error", e);
+                }
+              });
+        }
+      }
+    }
+
     if (!isPaused) {
       markseenDebouncer.publish(() -> manageMessageSeenState());
     }
@@ -874,6 +942,9 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   private void scrollAndHighlight(final int pos, boolean smooth) {
+    // fork-only: programmatic jump, breaks markseen continuity.
+    lastMarkFirstMsgId = 0;
+    lastMarkLastMsgId = 0;
     list.post(
         () -> {
           if (smooth && !AccessibilityUtil.areAnimationsDisabled(getContext())) {
@@ -1037,7 +1108,16 @@ public class ConversationFragment extends MessageSelectorFragment {
 
       //            lastPositionId        = positionId;
 
-      markseenDebouncer.publish(() -> manageMessageSeenState());
+      // fork-only: throttle intermediate marks during a long continuous scroll, so a fling
+      // is covered by several marks instead of a single trailing one. The debouncer below
+      // still emits the trailing mark after the scroll settles.
+      long now = SystemClock.uptimeMillis();
+      if (now - lastMarkseenMs >= SEEN_THROTTLE_MS) {
+        lastMarkseenMs = now;
+        manageMessageSeenState();
+      } else {
+        markseenDebouncer.publish(() -> manageMessageSeenState());
+      }
 
       ConversationFragment.this.addReactionView.move(dy);
     }
@@ -1091,7 +1171,10 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   private void manageMessageSeenState() {
-
+    ConversationAdapter adapter = (ConversationAdapter) list.getAdapter();
+    if (adapter == null) {
+      return;
+    }
     LinearLayoutManager layoutManager = (LinearLayoutManager) list.getLayoutManager();
 
     int firstPos = layoutManager.findFirstVisibleItemPosition();
@@ -1100,13 +1183,50 @@ public class ConversationFragment extends MessageSelectorFragment {
       return;
     }
 
-    ArrayList<Integer> ids = new ArrayList<>(lastPos - firstPos + 1);
-    for (int pos = firstPos; pos <= lastPos; pos++) {
-      DcMsg message = ((ConversationAdapter) list.getAdapter()).getMsg(pos);
+    // fork-only: gap-filling for continuous user scrolling. The debounced/throttled mark
+    // only sees the current viewport, so a fling would leave the flown-through messages
+    // fresh. Track the previous marked range by msgId (stable across insertions, unlike
+    // positions): on a small continuous shift, mark the union of the old and new ranges;
+    // on a gap/jump, mark only the visible viewport.
+    int markFirst = firstPos;
+    int markLast = lastPos;
+    if (lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0) {
+      int prevFirst = adapter.msgIdToPosition(lastMarkFirstMsgId);
+      int prevLast = adapter.msgIdToPosition(lastMarkLastMsgId);
+      if (prevFirst != -1 && prevLast != -1) {
+        int prevLo = Math.min(prevFirst, prevLast);
+        int prevHi = Math.max(prevFirst, prevLast);
+        int curLo = Math.min(firstPos, lastPos);
+        int curHi = Math.max(firstPos, lastPos);
+        boolean overlapsOrAdjacent = curLo <= prevHi + 1 && prevLo <= curHi + 1;
+        if (overlapsOrAdjacent
+            && Math.max(curHi, prevHi) - Math.min(curLo, prevLo) <= SEEN_GAP_FILL_MAX) {
+          markFirst = Math.min(curLo, prevLo);
+          markLast = Math.max(curHi, prevHi);
+        }
+      }
+    }
+
+    ArrayList<Integer> ids = new ArrayList<>(markLast - markFirst + 1);
+    int newFirstMsgId = 0;
+    int newLastMsgId = 0;
+    for (int pos = markFirst; pos <= markLast; pos++) {
+      DcMsg message = adapter.getMsg(pos);
+      if (pos == firstPos) {
+        newFirstMsgId = message.getId();
+      }
+      if (pos == lastPos) {
+        newLastMsgId = message.getId();
+      }
       if (message.getFromId() != DC_CONTACT_ID_SELF) {
         ids.add(message.getId());
       }
     }
+    // fork-only: anchor continuity on the actually visible range, not the filled union,
+    // so a later jump back over already-marked messages does not re-expand the union.
+    lastMarkFirstMsgId = newFirstMsgId;
+    lastMarkLastMsgId = newLastMsgId;
+    lastMarkseenMs = SystemClock.uptimeMillis();
     Util.runOnAnyBackgroundThread(
         () -> {
           try {
