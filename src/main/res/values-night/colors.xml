@@ -11,4 +11,6 @@
     <color name="dummy_avatar_color">#808080</color>
 
     <color name="delete_account_item_bg">#222222</color>
+
+    <color name="youtube_preview_scrim">#33FFFFFF</color>
 </resources>

@@ -197,6 +197,8 @@
                     android:importantForAccessibility="no"
                     tools:text="Mango pickle lorem ipsum" />
 
+                <include layout="@layout/youtube_preview_card" />
+
                 <Button
                     android:id="@+id/msg_action_button"
                     android:visibility="gone"

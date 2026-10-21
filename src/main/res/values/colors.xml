@@ -137,4 +137,6 @@
     <color name="calls_button_background">#6B6B6B</color>
     <color name="calls_red">#FF0017</color>
     <color name="calls_green">#00AD00</color>
+
+    <color name="youtube_preview_scrim">#14000000</color>
 </resources>
