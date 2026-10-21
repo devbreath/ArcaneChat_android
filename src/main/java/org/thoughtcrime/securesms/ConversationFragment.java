@@ -1212,8 +1212,13 @@ public class ConversationFragment extends MessageSelectorFragment {
     // fork-only: gap-filling for continuous user scrolling. The debounced/throttled mark
     // only sees the current viewport, so a fling would leave the flown-through messages
     // fresh. Track the previous marked range by msgId (stable across insertions, unlike
-    // positions): on a small continuous shift, mark the union of the old and new ranges;
-    // on a gap/jump, mark only the visible viewport.
+    // positions) and mark the whole span from the previous to the current viewport, even
+    // with a gap: during a continuous user scroll everything in between was physically
+    // scrolled through by the user, i.e. "presented at least for a little moment" per the
+    // markseenMsgs core docs. Anchors update only on a completed mark, so the endpoints
+    // suffice and intermediate viewports need not be observed. Above the SEEN_GAP_FILL_MAX
+    // cap, mark visible-only (conservative). False unions after jumps are already guarded:
+    // continuity resets on every programmatic scroll/chat switch/firstLoad, refusal on -1.
     int markFirst = firstPos;
     int markLast = lastPos;
     if (lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0) {
@@ -1224,9 +1229,7 @@ public class ConversationFragment extends MessageSelectorFragment {
         int prevHi = Math.max(prevFirst, prevLast);
         int curLo = Math.min(firstPos, lastPos);
         int curHi = Math.max(firstPos, lastPos);
-        boolean overlapsOrAdjacent = curLo <= prevHi + 1 && prevLo <= curHi + 1;
-        if (overlapsOrAdjacent
-            && Math.max(curHi, prevHi) - Math.min(curLo, prevLo) <= SEEN_GAP_FILL_MAX) {
+        if (Math.max(curHi, prevHi) - Math.min(curLo, prevLo) <= SEEN_GAP_FILL_MAX) {
           markFirst = Math.min(curLo, prevLo);
           markLast = Math.max(curHi, prevHi);
         }
