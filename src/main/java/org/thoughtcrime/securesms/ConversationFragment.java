@@ -637,6 +637,10 @@ public class ConversationFragment extends MessageSelectorFragment {
   }
 
   public void scrollToBottom() {
+    if (list == null) {
+      return;
+    }
+    Context ctx = getContext();
     // fork-only: jump to the newest message with catch-up marking. Continuity is kept
     // (no anchor reset): the smooth path is marked on arrival at the bottom (uncapped,
     // see markCatchUpToBottomIfNeeded), the instant path is marked synchronously below.
@@ -657,8 +661,9 @@ public class ConversationFragment extends MessageSelectorFragment {
         preSnapshot = bottomAdapter.getMessageIds();
         if (preSnapshot != null
             && preSnapshot.length > 0
-            && lastMarkFirstMsgId == 0
-            && lastMarkLastMsgId == 0) {
+            && (lastMarkFirstMsgId == 0 || lastMarkLastMsgId == 0)) {
+          lastMarkFirstMsgId = 0;
+          lastMarkLastMsgId = 0;
           lastMarkFirstMsgId = msgIdAtPosition(preSnapshot, preFirst);
           lastMarkLastMsgId = msgIdAtPosition(preSnapshot, preLast);
         }
@@ -667,7 +672,8 @@ public class ConversationFragment extends MessageSelectorFragment {
     boolean nearBottom =
         preFirst != RecyclerView.NO_POSITION
             && preFirst < SCROLL_ANIMATION_THRESHOLD
-            && !AccessibilityUtil.areAnimationsDisabled(getContext());
+            && ctx != null
+            && !AccessibilityUtil.areAnimationsDisabled(ctx);
     if (nearBottom) {
       list.smoothScrollToPosition(0);
     } else {
@@ -680,7 +686,7 @@ public class ConversationFragment extends MessageSelectorFragment {
           && preSnapshot.length > 0
           && preFirst != RecyclerView.NO_POSITION
           && preLast != RecyclerView.NO_POSITION
-          && getContext() != null) {
+          && ctx != null) {
         int upperBound = Math.max(preFirst, preLast);
         if (lastMarkFirstMsgId != 0 && lastMarkLastMsgId != 0) {
           int prevFirst = bottomAdapter.msgIdToPosition(lastMarkFirstMsgId);
@@ -689,8 +695,8 @@ public class ConversationFragment extends MessageSelectorFragment {
             upperBound = Math.max(upperBound, Math.max(prevFirst, prevLast));
           }
         }
-        DcContext bottomDcContext = DcHelper.getContext(getContext());
-        if (bottomDcContext != null && upperBound >= 0) {
+        DcContext bottomDcContext = DcHelper.getContext(ctx);
+        if (bottomDcContext != null) {
           lastMarkFirstMsgId = msgIdAtPosition(preSnapshot, 0);
           lastMarkLastMsgId = msgIdAtPosition(preSnapshot, 0);
           lastMarkseenMs = SystemClock.uptimeMillis();
@@ -1362,7 +1368,7 @@ public class ConversationFragment extends MessageSelectorFragment {
                 continue;
               }
               DcMsg message = markDcContext.getMsg(id);
-              if (message.getFromId() != DC_CONTACT_ID_SELF) {
+              if (message.getId() > 0 && message.getFromId() != DC_CONTACT_ID_SELF) {
                 ids.add(message.getId());
               }
             }
