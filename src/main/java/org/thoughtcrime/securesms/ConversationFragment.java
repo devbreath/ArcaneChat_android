@@ -53,6 +53,8 @@ import com.b44t.messenger.DcContact;
 import com.b44t.messenger.DcContext;
 import com.b44t.messenger.DcEvent;
 import com.b44t.messenger.DcMsg;
+import com.google.android.material.badge.BadgeDrawable;
+import com.google.android.material.badge.BadgeUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -110,6 +112,8 @@ public class ConversationFragment extends MessageSelectorFragment {
   private RecyclerView.ItemDecoration lastSeenDecoration;
   private StickyHeaderDecoration dateDecoration;
   private View scrollToBottomButton;
+  // fork-only: unread counter badge attached to the scroll-to-bottom button.
+  private BadgeDrawable scrollToBottomBadge;
   private View floatingLocationButton;
   private View bottomDivider;
   private AddReactionView addReactionView;
@@ -145,6 +149,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     eventCenter.addObserver(DcContext.DC_EVENT_REACTIONS_CHANGED, this);
     eventCenter.addObserver(DcContext.DC_EVENT_MSG_DELIVERED, this);
     eventCenter.addObserver(DcContext.DC_EVENT_MSG_FAILED, this);
+    eventCenter.addObserver(DcContext.DC_EVENT_MSGS_NOTICED, this);
     eventCenter.addObserver(DcContext.DC_EVENT_CHAT_MODIFIED, this);
     eventCenter.addObserver(DcContext.DC_EVENT_PINNED_MESSAGES_CHANGED, this);
 
@@ -178,6 +183,12 @@ public class ConversationFragment extends MessageSelectorFragment {
           pinnedMessagesBanner.goToStart(GlideApp.with(this));
           scrollToBottom();
         });
+
+    // fork-only: unread counter on the scroll-to-bottom button, same number as the
+    // chatlist badge (fresh messages). Hidden together with the button at the bottom.
+    scrollToBottomBadge = BadgeDrawable.create(getContext());
+    scrollToBottomBadge.setVisible(false);
+    BadgeUtils.attachBadgeDrawable(scrollToBottomBadge, scrollToBottomButton);
 
     final SetStartingPositionLinearLayoutManager layoutManager =
         new SetStartingPositionLinearLayoutManager(
@@ -308,6 +319,16 @@ public class ConversationFragment extends MessageSelectorFragment {
     } else {
       pendingRemoveBottomInsets = true;
     }
+  }
+
+  @Override
+  public void onDestroyView() {
+    // fork-only: drop the badge reference so a recreated view gets a fresh one.
+    if (scrollToBottomBadge != null && scrollToBottomButton != null) {
+      BadgeUtils.detachBadgeDrawable(scrollToBottomBadge, scrollToBottomButton);
+    }
+    scrollToBottomBadge = null;
+    super.onDestroyView();
   }
 
   @Override
@@ -1219,6 +1240,8 @@ public class ConversationFragment extends MessageSelectorFragment {
         markCatchUpToBottomIfNeeded();
       } else if (currentlyAtZoomScrollHeight) {
         ViewUtil.animateIn(scrollToBottomButton, scrollButtonInAnimation);
+        // fork-only: refresh the unread counter on the scroll-to-bottom button.
+        updateScrollToBottomBadge();
       }
 
       //      if (positionId != lastPositionId) {
@@ -1287,6 +1310,40 @@ public class ConversationFragment extends MessageSelectorFragment {
     // list.getAdapter()).onBindHeaderViewHolder(headerViewHolder, positionId);
     //           }
     //       }
+  }
+
+  // fork-only: unread counter on the scroll-to-bottom button. Same number as the chatlist
+  // badge (fresh messages via RPC, cheap indexed query in the core). Called when the
+  // button becomes visible and on MsgsNoticed events; hidden together with the button
+  // at the bottom. The RPC round-trip runs in the background, the badge update on main.
+  private void updateScrollToBottomBadge() {
+    if (scrollToBottomBadge == null || rpc == null || chatId <= 0) {
+      return;
+    }
+    Util.runOnAnyBackgroundThread(
+        () -> {
+          int fresh = 0;
+          try {
+            fresh = rpc.getFreshMsgCnt(rpc.getSelectedAccountId(), (int) chatId);
+          } catch (RpcException e) {
+            Log.e(TAG, "RPC error", e);
+            return;
+          }
+          final int count = fresh;
+          Util.runOnMain(
+              () -> {
+                if (scrollToBottomBadge == null) {
+                  return;
+                }
+                if (count > 0) {
+                  scrollToBottomBadge.setNumber(count);
+                  scrollToBottomBadge.setVisible(true);
+                } else {
+                  scrollToBottomBadge.setVisible(false);
+                  scrollToBottomBadge.clearNumber();
+                }
+              });
+        });
   }
 
   private void manageMessageSeenState() {
@@ -1766,6 +1823,14 @@ public class ConversationFragment extends MessageSelectorFragment {
         if (event.getData1Int() == chatId) {
           updateLocationButton();
           reloadList(true);
+        }
+        break;
+
+      case DcContext.DC_EVENT_MSGS_NOTICED:
+        // fork-only: our markseen passes emit this per modified chat — refresh the
+        // scroll-to-bottom badge so it shrinks while reading.
+        if (event.getData1Int() == chatId) {
+          updateScrollToBottomBadge();
         }
         break;
 
