@@ -1071,10 +1071,12 @@ public class ConversationFragment extends MessageSelectorFragment {
     }
   }
 
-  // fork-only: remember the topmost visible message, so the reading position survives
-  // leaving the chat or restarting the app. With reverseLayout the topmost visible item
-  // is the last visible position. When the user is at the very bottom, the saved
-  // position is cleared instead, so reopening follows the normal bottom path.
+  // fork-only: remember the most visible message, so the reading position survives
+  // leaving the chat or restarting the app. The anchor is the item with the largest
+  // visible height in the viewport (not just the topmost one): a long message peeking
+  // in by a few pixels must not win over the short messages actually being read below
+  // it. When the user is at the very bottom, the saved position is cleared instead,
+  // so reopening follows the normal bottom path.
   private void saveVisiblePosition() {
     if (list == null || getContext() == null || rpc == null || chatId <= 0) {
       return;
@@ -1087,7 +1089,7 @@ public class ConversationFragment extends MessageSelectorFragment {
       return;
     }
     LinearLayoutManager layoutManager = (LinearLayoutManager) list.getLayoutManager();
-    int pos = layoutManager.findLastVisibleItemPosition();
+    int pos = findMostVisiblePosition(layoutManager);
     if (pos == RecyclerView.NO_POSITION) {
       return;
     }
@@ -1107,6 +1109,36 @@ public class ConversationFragment extends MessageSelectorFragment {
       return;
     }
     ChatPositionMemory.setLastVisibleMsgId(getContext(), accountId, chatId, msg.getId());
+  }
+
+  // fork-only: adapter position of the item with the largest visible height inside the
+  // RecyclerView viewport, or NO_POSITION when nothing is laid out. Pure view geometry,
+  // no DB access: safe on the main thread. With reverseLayout the visually topmost item
+  // has the highest position, so ties resolve towards it.
+  private int findMostVisiblePosition(LinearLayoutManager layoutManager) {
+    int firstPos = layoutManager.findFirstVisibleItemPosition();
+    int lastPos = layoutManager.findLastVisibleItemPosition();
+    if (firstPos == RecyclerView.NO_POSITION || lastPos == RecyclerView.NO_POSITION) {
+      return RecyclerView.NO_POSITION;
+    }
+    int listTop = list.getPaddingTop();
+    int listBottom = list.getHeight() - list.getPaddingBottom();
+    int bestPos = RecyclerView.NO_POSITION;
+    int bestVisible = -1;
+    int lo = Math.min(firstPos, lastPos);
+    int hi = Math.max(firstPos, lastPos);
+    for (int pos = lo; pos <= hi; pos++) {
+      View child = layoutManager.findViewByPosition(pos);
+      if (child == null) {
+        continue;
+      }
+      int visible = Math.min(child.getBottom(), listBottom) - Math.max(child.getTop(), listTop);
+      if (visible > bestVisible) {
+        bestVisible = visible;
+        bestPos = pos;
+      }
+    }
+    return bestVisible <= 0 ? RecyclerView.NO_POSITION : bestPos;
   }
 
   // fork-only: resolve the adapter position for the remembered message.
