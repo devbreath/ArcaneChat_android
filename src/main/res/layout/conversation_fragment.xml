@@ -63,8 +63,8 @@
             android:src="@drawable/ic_location_on_white_24dp"
             android:tint="@color/location_icon" />
 
-        <ImageButton
-            android:id="@+id/scroll_to_bottom_button"
+        <FrameLayout
+            android:id="@+id/scroll_to_bottom_container"
             android:visibility="invisible"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -72,16 +72,41 @@
             android:layout_marginRight="10dp"
             android:layout_marginBottom="20dp"
             android:layout_gravity="bottom|end"
-            android:paddingTop="10dp"
-            android:paddingBottom="6dp"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:background="?attr/floating_mini_bg"
-            android:tint="@color/gray50"
             android:elevation="1dp"
-            android:alpha="0.9"
-            android:contentDescription="@string/menu_scroll_to_bottom"
-            android:src="@drawable/ic_search_down" />
+            android:alpha="0.9">
+
+            <ImageButton
+                android:id="@+id/scroll_to_bottom_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingTop="10dp"
+                android:paddingBottom="6dp"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:background="?attr/floating_mini_bg"
+                android:tint="@color/gray50"
+                android:contentDescription="@string/menu_scroll_to_bottom"
+                android:src="@drawable/ic_search_down" />
+
+            <TextView
+                android:id="@+id/scroll_to_bottom_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:minWidth="20dp"
+                android:minHeight="20dp"
+                android:paddingLeft="5dp"
+                android:paddingRight="5dp"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp"
+                android:gravity="center"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:background="@drawable/scroll_to_bottom_badge"
+                android:visibility="gone" />
+
+        </FrameLayout>
 
         <org.thoughtcrime.securesms.reactions.AddReactionView
             android:id="@+id/add_reaction_view"

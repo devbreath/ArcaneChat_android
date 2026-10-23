@@ -53,8 +53,6 @@ import com.b44t.messenger.DcContact;
 import com.b44t.messenger.DcContext;
 import com.b44t.messenger.DcEvent;
 import com.b44t.messenger.DcMsg;
-import com.google.android.material.badge.BadgeDrawable;
-import com.google.android.material.badge.BadgeUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -112,8 +110,9 @@ public class ConversationFragment extends MessageSelectorFragment {
   private RecyclerView.ItemDecoration lastSeenDecoration;
   private StickyHeaderDecoration dateDecoration;
   private View scrollToBottomButton;
-  // fork-only: unread counter badge attached to the scroll-to-bottom button.
-  private BadgeDrawable scrollToBottomBadge;
+  // fork-only: unread counter badge on the scroll-to-bottom button container.
+  private View scrollToBottomContainer;
+  private TextView scrollToBottomBadge;
   private View floatingLocationButton;
   private View bottomDivider;
   private AddReactionView addReactionView;
@@ -171,7 +170,9 @@ public class ConversationFragment extends MessageSelectorFragment {
   public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle bundle) {
     final View view = inflater.inflate(R.layout.conversation_fragment, container, false);
     list = ViewUtil.findById(view, android.R.id.list);
+    scrollToBottomContainer = ViewUtil.findById(view, R.id.scroll_to_bottom_container);
     scrollToBottomButton = ViewUtil.findById(view, R.id.scroll_to_bottom_button);
+    scrollToBottomBadge = ViewUtil.findById(view, R.id.scroll_to_bottom_badge);
     floatingLocationButton = ViewUtil.findById(view, R.id.floating_location_button);
     addReactionView = ViewUtil.findById(view, R.id.add_reaction_view);
     pinnedMessagesBanner = ViewUtil.findById(view, R.id.pinned_messages_banner);
@@ -183,12 +184,6 @@ public class ConversationFragment extends MessageSelectorFragment {
           pinnedMessagesBanner.goToStart(GlideApp.with(this));
           scrollToBottom();
         });
-
-    // fork-only: unread counter on the scroll-to-bottom button, same number as the
-    // chatlist badge (fresh messages). Hidden together with the button at the bottom.
-    scrollToBottomBadge = BadgeDrawable.create(getContext());
-    scrollToBottomBadge.setVisible(false);
-    BadgeUtils.attachBadgeDrawable(scrollToBottomBadge, scrollToBottomButton);
 
     final SetStartingPositionLinearLayoutManager layoutManager =
         new SetStartingPositionLinearLayoutManager(
@@ -225,14 +220,14 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (pendingAddBottomInsets) {
       bottomDivider.setVisibility(View.GONE);
       ViewUtil.forceApplyWindowInsets(list, false, true, false, true);
-      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomButton, true, true, true, true);
+      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomContainer, true, true, true, true);
       pendingAddBottomInsets = false;
     }
 
     if (pendingRemoveBottomInsets) {
       bottomDivider.setVisibility(View.VISIBLE);
       ViewUtil.forceApplyWindowInsets(list, false, true, false, false);
-      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomButton, true, true, true, false);
+      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomContainer, true, true, true, false);
       pendingRemoveBottomInsets = false;
     }
 
@@ -303,7 +298,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (bottomDivider != null) {
       bottomDivider.setVisibility(View.GONE);
       ViewUtil.forceApplyWindowInsets(list, false, true, false, true);
-      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomButton, false, false, false, true);
+      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomContainer, false, false, false, true);
       pendingAddBottomInsets = false;
     } else {
       pendingAddBottomInsets = true;
@@ -314,7 +309,7 @@ public class ConversationFragment extends MessageSelectorFragment {
     if (bottomDivider != null) {
       bottomDivider.setVisibility(View.VISIBLE);
       ViewUtil.forceApplyWindowInsets(list, false, true, false, false);
-      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomButton, false, false, false, false);
+      ViewUtil.forceApplyWindowInsetsAsMargin(scrollToBottomContainer, false, false, false, false);
       pendingRemoveBottomInsets = false;
     } else {
       pendingRemoveBottomInsets = true;
@@ -324,9 +319,8 @@ public class ConversationFragment extends MessageSelectorFragment {
   @Override
   public void onDestroyView() {
     // fork-only: drop the badge reference so a recreated view gets a fresh one.
-    if (scrollToBottomBadge != null && scrollToBottomButton != null) {
-      BadgeUtils.detachBadgeDrawable(scrollToBottomBadge, scrollToBottomButton);
-    }
+    scrollToBottomContainer = null;
+    scrollToBottomButton = null;
     scrollToBottomBadge = null;
     super.onDestroyView();
   }
@@ -1234,12 +1228,12 @@ public class ConversationFragment extends MessageSelectorFragment {
       //            int     positionId                  = getHeaderPositionId();
 
       if (currentlyAtBottom) {
-        ViewUtil.animateOut(scrollToBottomButton, scrollButtonOutAnimation, View.INVISIBLE);
+        ViewUtil.animateOut(scrollToBottomContainer, scrollButtonOutAnimation, View.INVISIBLE);
         // fork-only: arrival at the bottom after a long downward jump/fling — mark the
         // whole tail, see markCatchUpToBottomIfNeeded().
         markCatchUpToBottomIfNeeded();
       } else if (currentlyAtZoomScrollHeight) {
-        ViewUtil.animateIn(scrollToBottomButton, scrollButtonInAnimation);
+        ViewUtil.animateIn(scrollToBottomContainer, scrollButtonInAnimation);
         // fork-only: refresh the unread counter on the scroll-to-bottom button.
         updateScrollToBottomBadge();
       }
@@ -1316,6 +1310,8 @@ public class ConversationFragment extends MessageSelectorFragment {
   // badge (fresh messages via RPC, cheap indexed query in the core). Called when the
   // button becomes visible and on MsgsNoticed events; hidden together with the button
   // at the bottom. The RPC round-trip runs in the background, the badge update on main.
+  // Plain TextView with an oval background on purpose: Material BadgeDrawable requires
+  // a MaterialComponents theme and crashes AppCompat-themed apps on creation.
   private void updateScrollToBottomBadge() {
     if (scrollToBottomBadge == null || rpc == null || chatId <= 0) {
       return;
@@ -1336,11 +1332,14 @@ public class ConversationFragment extends MessageSelectorFragment {
                   return;
                 }
                 if (count > 0) {
-                  scrollToBottomBadge.setNumber(count);
-                  scrollToBottomBadge.setVisible(true);
+                  scrollToBottomBadge.setText(Util.humanReadableCount(count));
+                  scrollToBottomBadge.setContentDescription(
+                      getResources()
+                          .getQuantityString(R.plurals.chat_n_unread_messages, count, count));
+                  scrollToBottomBadge.setVisibility(View.VISIBLE);
                 } else {
-                  scrollToBottomBadge.setVisible(false);
-                  scrollToBottomBadge.clearNumber();
+                  scrollToBottomBadge.setVisibility(View.GONE);
+                  scrollToBottomBadge.setContentDescription(null);
                 }
               });
         });
